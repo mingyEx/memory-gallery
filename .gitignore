@@ -43,3 +43,15 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+.env
+.env.*
+*.keystore
+*.jks
+key.properties
+android/key.properties
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+*.log
+*.tmp
+*.bak
+/screenclip/
