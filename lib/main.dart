@@ -2136,6 +2136,21 @@ class _DesktopHomeLayout extends StatelessWidget {
                     onCustomBackgroundPressed: onCustomBackgroundPressed,
                     onClearBackgroundPressed: onClearBackgroundPressed,
                   ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
                   const _SectionMarker(number: 1),
                 ],
               ),
@@ -2164,6 +2179,21 @@ class _DesktopHomeLayout extends StatelessWidget {
                     desktop: true,
                     backgroundImagePath: appearance.backgroundImagePath,
                     onDesktopFocusNavigate: onDesktopFocusNavigate,
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
                   ),
                   const _SectionMarker(number: 2),
                 ],
@@ -2229,6 +2259,21 @@ class _DesktopHomeLayout extends StatelessWidget {
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(5),
                           ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
                         ),
                       ),
                     ),
@@ -2506,7 +2551,7 @@ class _SectionMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: Align(
-        alignment: Alignment.topLeft,
+        alignment: Alignment.topRight,
         child: Padding(
           padding: const EdgeInsets.all(6),
           child: DecoratedBox(
@@ -2533,6 +2578,8 @@ class _SectionMarker extends StatelessWidget {
     );
   }
 }
+
+const bool _showDebugSectionFrames = true;
 
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
@@ -3196,6 +3243,23 @@ class _ShelfScene extends StatelessWidget {
                           },
                           onAlbumEdit: (AlbumData album) =>
                               _editAlbum(context, album),
+                          onAlbumDelete: (AlbumData album) async {
+                            final bool confirmed = await _confirmDeleteAlbum(
+                              context,
+                              album,
+                            );
+                            if (!context.mounted || !confirmed) {
+                              return;
+                            }
+                            onAlbumDeleted(album.id);
+                          },
+                          onCreateAlbum: () {
+                            _createAlbumFlow(
+                              context,
+                              onAlbumCreated,
+                              albums,
+                            );
+                          },
                         ),
                       ),
                     )
@@ -3234,6 +3298,7 @@ class _ShelfScene extends StatelessWidget {
                                         ),
                                       );
                                     },
+                                    onEditText: () => _editAlbum(context, album),
                                     onEdit: () => _editAlbum(context, album),
                                   ),
                                 );
@@ -3278,6 +3343,8 @@ class _ShelfScene extends StatelessWidget {
                                         child: _MobileFocusedAlbumStage(
                                           album: album,
                                           active: active,
+                                          onEditText: () =>
+                                              _editAlbum(context, album),
                                           onEdit: () =>
                                               _editAlbum(context, album),
                                         ),
@@ -3423,6 +3490,7 @@ class _ShelfScene extends StatelessWidget {
       ),
     );
   }
+
 
   static Future<void> _createAlbumFlow(
     BuildContext context,
@@ -3904,29 +3972,35 @@ class _DesktopAlbumGridState extends State<_DesktopAlbumGrid> {
     if (widget.albums.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Scrollbar(
-      controller: _scrollController,
-      thumbVisibility: true,
-      trackVisibility: true,
-      child: GridView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.only(right: 10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 24,
-          mainAxisSpacing: 24,
-          childAspectRatio: 0.84,
-        ),
-        itemCount: widget.albums.length,
-        itemBuilder: (BuildContext context, int index) {
-          final AlbumData album = widget.albums[index];
-          return _DesktopAlbumGridCard(
-            album: album,
-            onTap: () => widget.onAlbumTap(album),
-            onEdit: () => widget.onAlbumEdit(album),
-          );
-        },
-      ),
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool compact = constraints.maxWidth < 700;
+        return Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: !compact,
+          trackVisibility: !compact,
+          child: GridView.builder(
+            controller: _scrollController,
+            padding: EdgeInsets.only(right: compact ? 0 : 10),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: compact ? 2 : 3,
+              crossAxisSpacing: compact ? 14 : 24,
+              mainAxisSpacing: compact ? 14 : 24,
+              childAspectRatio: compact ? 0.72 : 0.84,
+            ),
+            itemCount: widget.albums.length,
+            itemBuilder: (BuildContext context, int index) {
+              final AlbumData album = widget.albums[index];
+              return _DesktopAlbumGridCard(
+                album: album,
+                compact: compact,
+                onTap: () => widget.onAlbumTap(album),
+                onEdit: () => widget.onAlbumEdit(album),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -3934,114 +4008,120 @@ class _DesktopAlbumGridState extends State<_DesktopAlbumGrid> {
 class _DesktopAlbumGridCard extends StatelessWidget {
   const _DesktopAlbumGridCard({
     required this.album,
+    required this.compact,
     required this.onTap,
     required this.onEdit,
   });
 
   final AlbumData album;
+  final bool compact;
   final VoidCallback onTap;
   final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
+    final Widget card = GestureDetector(
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFCF7).withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: const Color(0xFFE7D7C6)),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: Color(0x19000000),
+              blurRadius: 22,
+              offset: Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(compact ? 8 : 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(5),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      AlbumCoverVisual(album: album),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: <Color>[
+                              Colors.transparent,
+                              const Color(0x1A000000),
+                              const Color(0x8A1E140F),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: compact ? 8 : 10,
+                        right: compact ? 8 : 10,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: onEdit,
+                            borderRadius: BorderRadius.circular(5),
+                            child: Ink(
+                              width: compact ? 30 : 34,
+                              height: compact ? 30 : 34,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.90),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.edit_outlined,
+                                size: compact ? 16 : 18,
+                                color: const Color(0xFF5A3E2A),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: compact ? 8 : 12),
+              Text(
+                album.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: const Color(0xFF4A3424),
+                  fontWeight: FontWeight.w700,
+                  fontSize: compact ? 14 : 16,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                album.subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: const Color(0xFF866E5B),
+                  fontSize: compact ? 11 : 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (compact) {
+      return card;
+    }
     return Center(
       child: FractionallySizedBox(
         widthFactor: 0.75,
         heightFactor: 0.75,
-        child: GestureDetector(
-          onTap: onTap,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFFCF7).withValues(alpha: 0.96),
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: const Color(0xFFE7D7C6)),
-              boxShadow: const <BoxShadow>[
-                BoxShadow(
-                  color: Color(0x19000000),
-                  blurRadius: 22,
-                  offset: Offset(0, 14),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(5),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: <Widget>[
-                          AlbumCoverVisual(album: album),
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: <Color>[
-                                  Colors.transparent,
-                                  const Color(0x1A000000),
-                                  const Color(0x8A1E140F),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 10,
-                            right: 10,
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: onEdit,
-                                borderRadius: BorderRadius.circular(5),
-                                child: Ink(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.90),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 18,
-                                    color: Color(0xFF5A3E2A),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    album.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF4A3424),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    album.subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF866E5B),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        child: card,
       ),
     );
   }
@@ -4052,11 +4132,15 @@ class _DesktopAlbumSpineWall extends StatefulWidget {
     required this.albums,
     required this.onAlbumTap,
     required this.onAlbumEdit,
+    required this.onAlbumDelete,
+    required this.onCreateAlbum,
   });
 
   final List<AlbumData> albums;
   final ValueChanged<AlbumData> onAlbumTap;
   final ValueChanged<AlbumData> onAlbumEdit;
+  final ValueChanged<AlbumData> onAlbumDelete;
+  final VoidCallback onCreateAlbum;
 
   @override
   State<_DesktopAlbumSpineWall> createState() => _DesktopAlbumSpineWallState();
@@ -4064,6 +4148,17 @@ class _DesktopAlbumSpineWall extends StatefulWidget {
 
 class _DesktopAlbumSpineWallState extends State<_DesktopAlbumSpineWall> {
   late final ScrollController _scrollController;
+
+  double _spineWidthFor(AlbumData album) {
+    final int seed = album.id.hashCode.abs();
+    return (100 + (seed % 51).toDouble()) * 0.75;
+  }
+
+  double _spineHeightFor(AlbumData album, double availableHeight) {
+    final int seed = album.title.hashCode.abs();
+    final double baseHeight = (availableHeight * 0.56).clamp(240.0, 420.0);
+    return (baseHeight + (seed % 51)).clamp(240.0, 470.0);
+  }
 
   @override
   void initState() {
@@ -4082,30 +4177,77 @@ class _DesktopAlbumSpineWallState extends State<_DesktopAlbumSpineWall> {
     if (widget.albums.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Scrollbar(
-      controller: _scrollController,
-      thumbVisibility: true,
-      trackVisibility: true,
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.only(right: 10),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 12,
-          children: List<Widget>.generate(widget.albums.length, (int index) {
-            final AlbumData album = widget.albums[index];
-            final double height = 228 + ((index % 4) * 16);
-            final double width = 42 + ((index % 3) * 6);
-            return _DesktopAlbumSpineCard(
-              album: album,
-              width: width,
-              height: height,
-              onTap: () => widget.onAlbumTap(album),
-              onEdit: () => widget.onAlbumEdit(album),
-            );
-          }),
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double availableHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : 540;
+        final double baselineY = availableHeight * (2 / 3);
+
+        return Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                trackVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      ...List<Widget>.generate(widget.albums.length, (
+                        int index,
+                      ) {
+                        final AlbumData album = widget.albums[index];
+                        final double width = _spineWidthFor(album);
+                        final double height = _spineHeightFor(
+                          album,
+                          availableHeight,
+                        );
+                        final double topInset = ((baselineY - height) + 150)
+                            .clamp(
+                          0.0,
+                          availableHeight,
+                        );
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            top: topInset,
+                            right: 8,
+                          ),
+                          child: _DesktopAlbumSpineCard(
+                            album: album,
+                            width: width,
+                            height: height,
+                            onTap: () => widget.onAlbumTap(album),
+                            onEdit: () => widget.onAlbumEdit(album),
+                            onDelete: () => widget.onAlbumDelete(album),
+                          ),
+                        );
+                      }),
+                      Padding(
+                        padding: EdgeInsets.only(
+                          top: ((baselineY - 240) + 150).clamp(
+                            0.0,
+                            availableHeight,
+                          ),
+                        ),
+                        child: _DesktopAddAlbumSpineCard(
+                          width: 100,
+                          height: 240,
+                          onTap: widget.onCreateAlbum,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -4117,6 +4259,7 @@ class _DesktopAlbumSpineCard extends StatelessWidget {
     required this.height,
     required this.onTap,
     required this.onEdit,
+    required this.onDelete,
   });
 
   final AlbumData album;
@@ -4124,13 +4267,61 @@ class _DesktopAlbumSpineCard extends StatelessWidget {
   final double height;
   final VoidCallback onTap;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final List<Color> palette = _spinePalette(album.style);
+    final bool compact = height <= 220 || width <= 72;
+    final double verticalPadding = compact ? 12 : 18;
+    final double notchWidth = compact ? 16 : 24;
+    final double notchHeight = compact ? 3 : 5;
+    final double titleSize = compact ? 14 : 18;
+    final String verticalTitle = album.title.characters.join('\n');
+    final List<String> subtitleParts = album.subtitle.split('·');
+    final String rawDateLabel = subtitleParts.length > 1
+        ? subtitleParts.last.trim()
+        : album.subtitle.trim();
+    final RegExp yearMonthPattern = RegExp(r'(\d{4})年\s*(\d{1,2})月');
+    final RegExpMatch? yearMonthMatch = yearMonthPattern.firstMatch(
+      rawDateLabel,
+    );
+    final String dateLabel = yearMonthMatch == null
+        ? rawDateLabel
+        : '${yearMonthMatch.group(1)} · ${yearMonthMatch.group(2)}';
+    final double dateBottom = math.max(12, (height / 8) - 10);
+    final double dateSize = compact ? 10 : 12;
+    final double coverThumbSize = math.max(40, width - 10);
+    final double coverThumbTop = math.max(
+      verticalPadding + notchHeight + 12,
+      (height / 3) - (coverThumbSize / 2),
+    );
+    final double dateTop = height - dateBottom - dateSize - 2;
+    final double titleTop = coverThumbTop + coverThumbSize;
+    final double titleHeight = math.max(24, dateTop - titleTop);
 
     return GestureDetector(
       onTap: onTap,
+      onSecondaryTapDown: (TapDownDetails details) async {
+        final String? action = await showMenu<String>(
+          context: context,
+          position: RelativeRect.fromLTRB(
+            details.globalPosition.dx,
+            details.globalPosition.dy,
+            details.globalPosition.dx,
+            details.globalPosition.dy,
+          ),
+          items: const <PopupMenuEntry<String>>[
+            PopupMenuItem<String>(value: 'edit', child: Text('编辑')),
+            PopupMenuItem<String>(value: 'delete', child: Text('删除')),
+          ],
+        );
+        if (action == 'edit') {
+          onEdit();
+        } else if (action == 'delete') {
+          onDelete();
+        }
+      },
       child: SizedBox(
         width: width,
         height: height,
@@ -4159,73 +4350,84 @@ class _DesktopAlbumSpineCard extends StatelessWidget {
                   ),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 14,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 8 : 10,
+                    vertical: verticalPadding,
                   ),
                   child: Column(
                     children: <Widget>[
                       Container(
-                        width: 18,
-                        height: 4,
+                        width: notchWidth,
+                        height: notchHeight,
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.70),
                           borderRadius: BorderRadius.circular(5),
                         ),
                       ),
                       const Spacer(),
-                      RotatedBox(
-                        quarterTurns: 3,
-                        child: Text(
-                          album.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.fade,
-                          softWrap: false,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.30),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
               ),
             ),
             Positioned(
-              right: -4,
-              top: 12,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onEdit,
-                  borderRadius: BorderRadius.circular(5),
-                  child: Ink(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.90),
-                      shape: BoxShape.circle,
+              left: 5,
+              top: coverThumbTop,
+              width: coverThumbSize,
+              height: coverThumbSize,
+              child: IgnorePointer(
+                child: SizedBox(
+                  width: coverThumbSize,
+                  height: coverThumbSize,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: AlbumCoverVisual(album: album),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 5,
+              top: titleTop,
+              width: coverThumbSize,
+              height: titleHeight,
+              child: IgnorePointer(
+                child: SizedBox(
+                  width: coverThumbSize,
+                  height: titleHeight,
+                  child: Center(
+                    child: Text(
+                      verticalTitle,
+                      maxLines: math.max(1, titleHeight ~/ titleSize),
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: titleSize,
+                        fontWeight: FontWeight.w700,
+                        height: 1.02,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.edit_outlined,
-                      size: 12,
-                      color: Color(0xFF5A3E2A),
-                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: dateBottom,
+              child: IgnorePointer(
+                child: Text(
+                  dateLabel,
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.visible,
+                  softWrap: false,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    fontSize: dateSize,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
                   ),
                 ),
               ),
@@ -4256,6 +4458,42 @@ class _DesktopAlbumSpineCard extends StatelessWidget {
       case PhotoStyle.nightLamp:
         return const <Color>[Color(0xFFAA7A54), Color(0xFF6A452F)];
     }
+  }
+}
+
+class _DesktopAddAlbumSpineCard extends StatelessWidget {
+  const _DesktopAddAlbumSpineCard({
+    required this.width,
+    required this.height,
+    required this.onTap,
+  });
+
+  final double width;
+  final double height;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.34)),
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.add_rounded,
+              size: 36,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -4396,6 +4634,50 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       ),
                     ),
                   ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _editAlbumDetails,
+                        borderRadius: BorderRadius.circular(5),
+                        child: Ink(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFCF7).withValues(
+                              alpha: 0.92,
+                            ),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFFE5D7C4),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: Color(0xFF5A3E2A),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
                   const _SectionMarker(number: 4),
                 ],
               ),
@@ -4416,6 +4698,51 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _editAlbumDetails() async {
+    final TextEditingController descriptionController = TextEditingController(
+      text: _album.description,
+    );
+    final String? result = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('编辑描述'),
+          content: TextField(
+            controller: descriptionController,
+            minLines: 4,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              hintText: '输入相册描述',
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(
+                descriptionController.text,
+              ),
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    final String nextDescription = result.trim();
+    final AlbumData updatedAlbum = _album.copyWith(
+      description: nextDescription,
+    );
+    setState(() {
+      _album = updatedAlbum;
+    });
+    widget.onAlbumChanged(updatedAlbum);
   }
 
   Future<void> _importPhotosFromFiles() async {
@@ -5061,9 +5388,11 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   late TextEditingController _dateController;
   double _rotationTurns = 0;
   double _zoom = 1;
+  Offset _panOffset = Offset.zero;
   double _noteFontSize = 16;
   double _textPanelFraction = 0.30;
   bool _isEditingDetails = false;
+  bool _textPanelCollapsed = false;
 
   PhotoData get photo => _photos[_index];
 
@@ -5099,8 +5428,20 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       photo: photo,
       zoom: _zoom,
       turns: _rotationTurns,
+      panOffset: _panOffset,
+      onPanUpdate: (Offset delta) {
+        setState(() {
+          _panOffset += delta;
+        });
+      },
       toolbar: _buildToolbar(),
       textPanel: _buildTextPanel(),
+      textPanelVisible: !_textPanelCollapsed,
+      onExpandTextPanel: () {
+        setState(() {
+          _textPanelCollapsed = false;
+        });
+      },
       desktop: isDesktop,
       textPanelFraction: _textPanelFraction,
       onTextPanelFractionChanged: (double value) {
@@ -5112,8 +5453,14 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: kToolbarHeight * (2 / 3),
         title: Text('${_index + 1} / ${_photos.length}'),
         actions: <Widget>[
+          TextButton.icon(
+            onPressed: _replaceCurrentPhoto,
+            icon: const Icon(Icons.photo_library_outlined),
+            label: const Text('选择其他照片'),
+          ),
           IconButton(
             onPressed: _deleteCurrentPhoto,
             icon: const Icon(Icons.delete_outline_rounded),
@@ -5147,16 +5494,31 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
           focusNode: _pageFocusNode,
           autofocus: true,
           onKeyEvent: _handlePageKeyEvent,
-          child: isDesktop
-              ? Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                  child: Stack(
-                    children: <Widget>[
-                      detailContent,
-                      const _SectionMarker(number: 5),
-                    ],
-                  ),
-                )
+              child: isDesktop
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                      child: Stack(
+                        children: <Widget>[
+                          detailContent,
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: _showDebugSectionFrames
+                                      ? Border.all(
+                                          color: const Color(0xFFE53935),
+                                          width: 2,
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const _SectionMarker(number: 5),
+                        ],
+                      ),
+                    )
               : Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: double.infinity),
@@ -5182,6 +5544,21 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                               child: detailContent,
                             ),
                           ),
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: _showDebugSectionFrames
+                                      ? Border.all(
+                                          color: const Color(0xFFE53935),
+                                          width: 2,
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                            ),
+                          ),
                           const _SectionMarker(number: 5),
                         ],
                       ),
@@ -5202,6 +5579,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       _index -= 1;
       _rotationTurns = 0;
       _zoom = 1;
+      _panOffset = Offset.zero;
       _resetEditingState();
     });
     _pageFocusNode.requestFocus();
@@ -5230,6 +5608,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       _index += 1;
       _rotationTurns = 0;
       _zoom = 1;
+      _panOffset = Offset.zero;
       _resetEditingState();
     });
     _pageFocusNode.requestFocus();
@@ -5253,43 +5632,64 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       },
       onZoomOut: () {
         setState(() {
-          _zoom = (_zoom - 0.2).clamp(0.8, 2.0);
+          _zoom = (_zoom - 0.2).clamp(1.0, 2.0);
+          if (_zoom == 1) {
+            _panOffset = Offset.zero;
+          }
         });
       },
     );
   }
 
   Widget _buildTextPanel() {
-    return _PhotoTextPanel(
-      photo: photo,
-      compact: photo.orientation == PhotoOrientation.portrait,
-      isEditing: _isEditingDetails,
-      titleController: _titleController,
-      noteController: _noteController,
-      dateController: _dateController,
-      noteFontSize: _noteFontSize,
-      onEdit: () {
-        setState(() {
-          _isEditingDetails = true;
-        });
-      },
-      onCancel: () {
-        setState(() {
-          _resetEditingState();
-        });
-      },
-      onPickDate: _pickDate,
-      onIncreaseFont: () {
-        setState(() {
-          _noteFontSize = (_noteFontSize + 1).clamp(13.0, 22.0);
-        });
-      },
-      onDecreaseFont: () {
-        setState(() {
-          _noteFontSize = (_noteFontSize - 1).clamp(13.0, 22.0);
-        });
-      },
-      onSave: _savePhotoDetails,
+    return Column(
+      children: <Widget>[
+        Expanded(
+          child: _PhotoTextPanel(
+            photo: photo,
+            compact: photo.orientation == PhotoOrientation.portrait,
+            isEditing: _isEditingDetails,
+            titleController: _titleController,
+            noteController: _noteController,
+            dateController: _dateController,
+            noteFontSize: _noteFontSize,
+            onEdit: () {
+              setState(() {
+                _isEditingDetails = true;
+              });
+            },
+            onCancel: () {
+              setState(() {
+                _resetEditingState();
+              });
+            },
+            onPickDate: _pickDate,
+            onIncreaseFont: () {
+              setState(() {
+                _noteFontSize = (_noteFontSize + 1).clamp(13.0, 22.0);
+              });
+            },
+            onDecreaseFont: () {
+              setState(() {
+                _noteFontSize = (_noteFontSize - 1).clamp(13.0, 22.0);
+              });
+            },
+            onSave: _savePhotoDetails,
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: IconButton(
+            tooltip: '隐藏文字面板',
+            onPressed: () {
+              setState(() {
+                _textPanelCollapsed = true;
+              });
+            },
+            icon: const Icon(Icons.chevron_right_rounded),
+          ),
+        ),
+      ],
     );
   }
 
@@ -5354,6 +5754,47 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       photos: List<PhotoData>.from(_photos),
     );
     widget.onAlbumChanged(updatedAlbum);
+  }
+
+  Future<void> _replaceCurrentPhoto() async {
+    final XFile? image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 95,
+    );
+    if (!mounted || image == null) {
+      return;
+    }
+    final String storedPath = await LocalAlbumStore.persistPickedImage(
+      image,
+      albumId: widget.album.id,
+    );
+    final PhotoOrientation orientation = await detectPhotoOrientation(
+      storedPath,
+    );
+    final DateTime detectedDate = await resolvePhotoDate(image.path);
+    final String previousImagePath = photo.imagePath ?? '';
+    final PhotoData updatedPhoto = photo.copyWith(
+      imagePath: storedPath,
+      orientation: orientation,
+      date: formatAlbumDate(detectedDate),
+    );
+    final List<PhotoData> updatedPhotos = List<PhotoData>.from(_photos);
+    updatedPhotos[_index] = updatedPhoto;
+    setState(() {
+      _photos = updatedPhotos;
+      _dateController.text = updatedPhoto.date;
+      _rotationTurns = 0;
+      _zoom = 1;
+      _panOffset = Offset.zero;
+    });
+    widget.onAlbumChanged(widget.album.copyWith(photos: updatedPhotos));
+    if (previousImagePath.isNotEmpty) {
+      unawaited(LocalAlbumStore.deleteManagedImage(previousImagePath));
+    }
+    if (!mounted) {
+      return;
+    }
+    showPrototypeMessage(context, '已更换当前照片');
   }
 
   KeyEventResult _handlePageKeyEvent(FocusNode node, KeyEvent event) {
@@ -5593,8 +6034,12 @@ class _LandscapeDetailLayout extends StatelessWidget {
     required this.photo,
     required this.zoom,
     required this.turns,
+    required this.panOffset,
+    required this.onPanUpdate,
     required this.toolbar,
     required this.textPanel,
+    required this.textPanelVisible,
+    required this.onExpandTextPanel,
     required this.desktop,
     required this.textPanelFraction,
     required this.onTextPanelFractionChanged,
@@ -5603,8 +6048,12 @@ class _LandscapeDetailLayout extends StatelessWidget {
   final PhotoData photo;
   final double zoom;
   final double turns;
+  final Offset panOffset;
+  final ValueChanged<Offset> onPanUpdate;
   final Widget toolbar;
   final Widget textPanel;
+  final bool textPanelVisible;
+  final VoidCallback onExpandTextPanel;
   final bool desktop;
   final double textPanelFraction;
   final ValueChanged<double> onTextPanelFractionChanged;
@@ -5612,23 +6061,69 @@ class _LandscapeDetailLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!desktop) {
+      if (!textPanelVisible) {
+        return Column(
+          key: const ValueKey<String>('mobile-photo-detail-layout'),
+          children: <Widget>[
+            Expanded(
+              child: Stack(
+                children: <Widget>[
+                  Positioned.fill(
+                    child: Column(
+                      children: <Widget>[
+                        Expanded(
+                          child: _DetailImageFrame(
+                            photo: photo,
+                            zoom: zoom,
+                            turns: turns,
+                            panOffset: panOffset,
+                            onPanUpdate: onPanUpdate,
+                            desktop: desktop,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        toolbar,
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: IconButton(
+                      tooltip: '显示文字面板',
+                      onPressed: onExpandTextPanel,
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      }
       return Column(
         key: const ValueKey<String>('mobile-photo-detail-layout'),
         children: <Widget>[
           Expanded(
             flex: photo.orientation == PhotoOrientation.portrait ? 5 : 4,
-            child: Column(
+            child: Stack(
               children: <Widget>[
-                Expanded(
+                Positioned.fill(
                   child: _DetailImageFrame(
                     photo: photo,
                     zoom: zoom,
                     turns: turns,
+                    panOffset: panOffset,
+                    onPanUpdate: onPanUpdate,
                     desktop: desktop,
                   ),
                 ),
-                const SizedBox(height: 12),
-                toolbar,
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: toolbar,
+                ),
               ],
             ),
           ),
@@ -5642,6 +6137,43 @@ class _LandscapeDetailLayout extends StatelessWidget {
     }
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
+        if (!textPanelVisible) {
+          return Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: Stack(
+                  children: <Widget>[
+                    Positioned.fill(
+                      child: _DetailImageFrame(
+                        photo: photo,
+                        zoom: zoom,
+                        turns: turns,
+                        panOffset: panOffset,
+                        onPanUpdate: onPanUpdate,
+                        desktop: desktop,
+                      ),
+                    ),
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      child: toolbar,
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                top: 0,
+                right: 0,
+                child: IconButton(
+                  tooltip: '显示文字面板',
+                  onPressed: onExpandTextPanel,
+                  icon: const Icon(Icons.chevron_left_rounded),
+                ),
+              ),
+            ],
+          );
+        }
         const double gap = 20;
         final double panelFraction = textPanelFraction.clamp(0.22, 0.42);
         final double availableWidth = constraints.maxWidth - gap;
@@ -5659,18 +6191,24 @@ class _LandscapeDetailLayout extends StatelessWidget {
           children: <Widget>[
             SizedBox(
               width: imageWidth,
-              child: Column(
+              child: Stack(
                 children: <Widget>[
-                  Expanded(
+                  Positioned.fill(
                     child: _DetailImageFrame(
                       photo: photo,
                       zoom: zoom,
                       turns: turns,
+                      panOffset: panOffset,
+                      onPanUpdate: onPanUpdate,
                       desktop: desktop,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  toolbar,
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 16,
+                    child: toolbar,
+                  ),
                 ],
               ),
             ),
@@ -5741,37 +6279,43 @@ class _DetailImageFrame extends StatelessWidget {
     required this.photo,
     required this.zoom,
     required this.turns,
+    required this.panOffset,
+    required this.onPanUpdate,
     required this.desktop,
   });
 
   final PhotoData photo;
   final double zoom;
   final double turns;
+  final Offset panOffset;
+  final ValueChanged<Offset> onPanUpdate;
   final bool desktop;
 
   @override
   Widget build(BuildContext context) {
-    final double aspectRatio = photo.orientation == PhotoOrientation.portrait
-        ? 0.7
-        : 1.72;
-
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFFF0E6DA),
         borderRadius: BorderRadius.circular(5),
       ),
-      child: Center(
-        child: Padding(
-          padding: EdgeInsets.all(desktop ? 8 : 12),
-          child: AspectRatio(
-            aspectRatio: aspectRatio,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(5),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: GestureDetector(
+          onPanUpdate: zoom > 1
+              ? (DragUpdateDetails details) => onPanUpdate(details.delta)
+              : null,
+          child: SizedBox.expand(
+            child: Transform.translate(
+              offset: panOffset,
               child: Transform.rotate(
                 angle: math.pi * 2 * turns,
                 child: Transform.scale(
+                  alignment: Alignment.center,
                   scale: zoom,
-                  child: PhotoVisual(photo: photo),
+                  child: PhotoVisual(
+                    photo: photo,
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
             ),
@@ -6129,46 +6673,37 @@ class _DetailToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7EFE4),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: <Widget>[
-            _ToolButton(
-              icon: Icons.chevron_left_rounded,
-              label: '上一张',
-              onTap: onPrevious,
-              enabled: canGoPrevious,
-            ),
-            _ToolButton(
-              icon: Icons.zoom_out_rounded,
-              label: '缩小',
-              onTap: onZoomOut,
-            ),
-            _ToolButton(
-              icon: Icons.zoom_in_rounded,
-              label: '放大',
-              onTap: onZoomIn,
-            ),
-            _ToolButton(
-              icon: Icons.rotate_right_rounded,
-              label: '旋转',
-              onTap: onRotate,
-            ),
-            _ToolButton(
-              icon: Icons.chevron_right_rounded,
-              label: '下一张',
-              onTap: onNext,
-              enabled: canGoNext,
-            ),
-          ],
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: <Widget>[
+        _ToolButton(
+          icon: Icons.chevron_left_rounded,
+          label: '上一张',
+          onTap: onPrevious,
+          enabled: canGoPrevious,
         ),
-      ),
+        _ToolButton(
+          icon: Icons.zoom_out_rounded,
+          label: '缩小',
+          onTap: onZoomOut,
+        ),
+        _ToolButton(
+          icon: Icons.zoom_in_rounded,
+          label: '放大',
+          onTap: onZoomIn,
+        ),
+        _ToolButton(
+          icon: Icons.rotate_right_rounded,
+          label: '旋转',
+          onTap: onRotate,
+        ),
+        _ToolButton(
+          icon: Icons.chevron_right_rounded,
+          label: '下一张',
+          onTap: onNext,
+          enabled: canGoNext,
+        ),
+      ],
     );
   }
 }
@@ -6188,19 +6723,31 @@ class _ToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: enabled ? onTap : null,
-      icon: Icon(
-        icon,
-        color: enabled ? const Color(0xFF6E4E35) : const Color(0xFFBEAA96),
+    final Widget button = DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7EFE4),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: const Color(0xFFE2C9B1)),
       ),
-      label: Text(
-        label,
-        style: TextStyle(
+      child: TextButton(
+        onPressed: enabled ? onTap : null,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(52, 52),
+          padding: const EdgeInsets.all(10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(5),
+          ),
+        ),
+        child: Icon(
+          icon,
           color: enabled ? const Color(0xFF6E4E35) : const Color(0xFFBEAA96),
         ),
       ),
     );
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      return button;
+    }
+    return Tooltip(message: label, child: button);
   }
 }
 
@@ -6217,25 +6764,25 @@ class _DarkActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final Widget button = InkWell(
       borderRadius: BorderRadius.circular(5),
       onTap: onTap,
       child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        width: 52,
+        height: 48,
         decoration: BoxDecoration(
           color: const Color(0xFF262626),
           borderRadius: BorderRadius.circular(5),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text(label, style: const TextStyle(color: Colors.white)),
-          ],
+        child: Center(
+          child: Icon(icon, color: Colors.white, size: 18),
         ),
       ),
     );
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      return button;
+    }
+    return Tooltip(message: label, child: button);
   }
 }
 
@@ -6363,11 +6910,13 @@ class _MobileFocusedAlbumStage extends StatelessWidget {
   const _MobileFocusedAlbumStage({
     required this.album,
     required this.active,
+    required this.onEditText,
     required this.onEdit,
   });
 
   final AlbumData album;
   final bool active;
+  final VoidCallback onEditText;
   final VoidCallback onEdit;
 
   @override
@@ -6457,33 +7006,6 @@ class _MobileFocusedAlbumStage extends StatelessWidget {
                                         ),
                                       ),
                                       Positioned(
-                                        top: 16,
-                                        right: 16,
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: onEdit,
-                                            borderRadius:
-                                                BorderRadius.circular(5),
-                                            child: Ink(
-                                              width: 38,
-                                              height: 38,
-                                              decoration: BoxDecoration(
-                                                color: Colors.white.withValues(
-                                                  alpha: 0.90,
-                                                ),
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(
-                                                Icons.edit_outlined,
-                                                size: 18,
-                                                color: Color(0xFF5A3E2A),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
                                         left: 20,
                                         right: 20,
                                         bottom: 20,
@@ -6535,13 +7057,29 @@ class _MobileFocusedAlbumStage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            Text(
-                              album.title,
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(
-                                    color: const Color(0xFF4A3424),
-                                    fontWeight: FontWeight.w700,
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: Text(
+                                    album.title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(
+                                          color: const Color(0xFF4A3424),
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                   ),
+                                ),
+                                IconButton(
+                                  tooltip: '编辑描述',
+                                  onPressed: onEditText,
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -6589,11 +7127,13 @@ class _DesktopFocusedAlbumStage extends StatelessWidget {
   const _DesktopFocusedAlbumStage({
     required this.album,
     required this.onTap,
+    required this.onEditText,
     required this.onEdit,
   });
 
   final AlbumData album;
   final VoidCallback onTap;
+  final VoidCallback onEditText;
   final VoidCallback onEdit;
 
   @override
@@ -6668,32 +7208,6 @@ class _DesktopFocusedAlbumStage extends StatelessWidget {
                                 ),
                               ),
                               Positioned(
-                                top: 16,
-                                right: 16,
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: onEdit,
-                                    borderRadius: BorderRadius.circular(5),
-                                    child: Ink(
-                                      width: 38,
-                                      height: 38,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.90,
-                                        ),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.edit_outlined,
-                                        size: 18,
-                                        color: Color(0xFF5A3E2A),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
                                 left: 24,
                                 right: 24,
                                 bottom: 24,
@@ -6744,13 +7258,27 @@ class _DesktopFocusedAlbumStage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
-                        album.title,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(
-                              color: const Color(0xFF4A3424),
-                              fontWeight: FontWeight.w700,
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              album.title,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(
+                                    color: const Color(0xFF4A3424),
+                                    fontWeight: FontWeight.w700,
+                                  ),
                             ),
+                          ),
+                          IconButton(
+                            tooltip: '编辑描述',
+                            onPressed: onEditText,
+                            icon: const Icon(
+                              Icons.edit_outlined,
+                              size: 18,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 10),
                       Text(
