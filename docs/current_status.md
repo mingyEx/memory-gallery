@@ -1,6 +1,7 @@
 # Current Status
 
 ## Completed This Round
+- Replaced the default Flutter README with a project-specific README that documents the current product scope, major features, cross-platform layout differences, validation commands, and packaging outputs.
 - Synced the latest Windows home-screen and photo-detail capabilities to Android.
 - Kept Android-specific mobile layouts as top-image / bottom-text for focused album mode and photo detail.
 - Moved mobile primary navigation for `相册 / 收藏 / 回收站` to the bottom of the screen.
@@ -10,6 +11,7 @@
 - Updated worklog so the current cross-platform state is recorded.
 
 ## Main Files Changed
+- `README.md`
 - `lib/main.dart`
 - `test/widget_test.dart`
 - `.gitignore`

@@ -3,12 +3,15 @@
 ## 2026-05-06
 
 ### What Was Completed
+- Rewrote `README.md` so the repository now describes the actual Memory Gallery product instead of the default Flutter starter text.
+- Documented current features, Windows / Android layout differences, local run commands, validation commands, package outputs, and current project direction.
 - Prepared the project for GitHub upload by checking git status, remotes, commit history, ignore rules, and untracked files.
 - Verified the repo currently has no remote configured.
 - Confirmed local git identity is configured as `mingy <mingyunbushou@outlook.com>`.
 - Added persistent project status records required by `docs/AGENTS.md`.
 
 ### Files Changed
+- `README.md`
 - `docs/current_status.md`
 - `docs/task_log.md`
 
