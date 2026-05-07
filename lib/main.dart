@@ -26,7 +26,8 @@ void showPrototypeMessage(BuildContext context, String message) {
 
 const Object _fieldUnset = Object();
 typedef DataActionCallback = Future<void> Function();
-typedef TrashRestoreCallback = bool Function(TrashPhotoEntry entry);
+typedef TrashRestoreCallback = String Function(TrashPhotoEntry entry);
+typedef AlbumsChangedCallback = void Function(List<AlbumData> albums);
 
 class LocalAlbumStore {
   static const String _albumsKey = 'albums_json_v1';
@@ -278,6 +279,25 @@ class LocalAlbumStore {
     for (final PhotoData photo in album.photos) {
       await deleteManagedImage(photo.imagePath);
     }
+  }
+
+  static Future<String?> duplicateManagedImage(
+    String? sourcePath, {
+    required String albumId,
+  }) async {
+    if (sourcePath == null || sourcePath.isEmpty) {
+      return null;
+    }
+    final File sourceFile = File(sourcePath);
+    if (!await sourceFile.exists()) {
+      return null;
+    }
+    final Directory mediaDir = await _mediaDirectory();
+    final String extension = _fileExtension(sourcePath);
+    final String targetPath =
+        '${mediaDir.path}${Platform.pathSeparator}${albumId}_${DateTime.now().microsecondsSinceEpoch}$extension';
+    await sourceFile.copy(targetPath);
+    return targetPath;
   }
 
   static Future<String> persistBackgroundImage(String sourcePath) async {
@@ -628,6 +648,7 @@ class TrashPhotoEntry {
     required this.albumId,
     required this.albumTitle,
     required this.photo,
+    required this.originalPhotoIndex,
     required this.deletedAt,
   });
 
@@ -635,6 +656,7 @@ class TrashPhotoEntry {
   final String albumId;
   final String albumTitle;
   final PhotoData photo;
+  final int originalPhotoIndex;
   final String deletedAt;
 
   Map<String, dynamic> toJson() {
@@ -643,6 +665,7 @@ class TrashPhotoEntry {
       'albumId': albumId,
       'albumTitle': albumTitle,
       'photo': photo.toJson(),
+      'originalPhotoIndex': originalPhotoIndex,
       'deletedAt': deletedAt,
     };
   }
@@ -653,6 +676,7 @@ class TrashPhotoEntry {
       albumId: json['albumId'] as String,
       albumTitle: json['albumTitle'] as String,
       photo: PhotoData.fromJson(json['photo'] as Map<String, dynamic>),
+      originalPhotoIndex: json['originalPhotoIndex'] as int? ?? 0,
       deletedAt: json['deletedAt'] as String,
     );
   }
@@ -708,12 +732,14 @@ List<TrashPhotoEntry> filterTrashPhotoEntries(
 TrashPhotoEntry createTrashPhotoEntry({
   required AlbumData album,
   required PhotoData photo,
+  required int originalPhotoIndex,
 }) {
   return TrashPhotoEntry(
     id: '${album.id}_${photo.id}_${DateTime.now().microsecondsSinceEpoch}',
     albumId: album.id,
     albumTitle: album.title,
     photo: photo,
+    originalPhotoIndex: originalPhotoIndex,
     deletedAt: DateTime.now().toIso8601String(),
   );
 }
@@ -1176,6 +1202,7 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         onAlbumChanged: _updateAlbum,
         onAlbumDeleted: _deleteAlbum,
         onPhotosTrashed: _trashPhotos,
+        onAlbumsChanged: _replaceAlbums,
         onTrashPhotoRestored: _restoreTrashPhoto,
         onTrashPhotoDeleted: _deleteTrashPhoto,
         onTrashEmptied: _emptyTrash,
@@ -1260,12 +1287,29 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     unawaited(LocalAlbumStore.saveRecycleBin(_recycleBin));
   }
 
-  bool _restoreTrashPhoto(TrashPhotoEntry entry) {
-    final int albumIndex = _albums.indexWhere(
+  String _restoreTrashPhoto(TrashPhotoEntry entry) {
+    const String fallbackAlbumTitle = '最近恢复';
+    int albumIndex = _albums.indexWhere(
       (AlbumData album) => album.id == entry.albumId,
     );
+    bool createdFallbackAlbum = false;
     if (albumIndex == -1) {
-      return false;
+      albumIndex = _albums.indexWhere(
+        (AlbumData album) => album.title == fallbackAlbumTitle,
+      );
+      if (albumIndex == -1) {
+        final AlbumData fallbackAlbum = AlbumData(
+          id: 'album-restored-${DateTime.now().microsecondsSinceEpoch}',
+          title: fallbackAlbumTitle,
+          subtitle: '0 张照片 · 最近恢复',
+          description: '自动接收从回收站恢复、但原相册已不存在的照片。',
+          style: entry.photo.style,
+          photos: const <PhotoData>[],
+        );
+        _albums = <AlbumData>[fallbackAlbum, ..._albums];
+        albumIndex = 0;
+        createdFallbackAlbum = true;
+      }
     }
     final AlbumData targetAlbum = _albums[albumIndex];
     PhotoData restoredPhoto = entry.photo;
@@ -1277,7 +1321,10 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         id: 'restored-${DateTime.now().microsecondsSinceEpoch}',
       );
     }
-    final AlbumData updatedAlbum = targetAlbum.withInsertedPhoto(restoredPhoto);
+    final AlbumData updatedAlbum = targetAlbum.withInsertedPhotoAt(
+      entry.originalPhotoIndex,
+      restoredPhoto,
+    );
     setState(() {
       _albums = _albums.map((AlbumData album) {
         return album.id == updatedAlbum.id ? updatedAlbum : album;
@@ -1288,7 +1335,10 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     });
     unawaited(LocalAlbumStore.saveAlbums(_albums));
     unawaited(LocalAlbumStore.saveRecycleBin(_recycleBin));
-    return true;
+    if (createdFallbackAlbum) {
+      return fallbackAlbumTitle;
+    }
+    return targetAlbum.title;
   }
 
   void _deleteTrashPhoto(TrashPhotoEntry entry) {
@@ -1427,15 +1477,35 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     unawaited(LocalAlbumStore.saveAlbums(_albums));
   }
 
+  void _replaceAlbums(List<AlbumData> albums) {
+    setState(() {
+      _albums = albums;
+    });
+    unawaited(LocalAlbumStore.saveAlbums(_albums));
+  }
+
   void _deleteAlbum(String albumId) {
     final AlbumData? album = _findAlbum(albumId);
+    final List<TrashPhotoEntry> trashedEntries =
+        album == null
+            ? const <TrashPhotoEntry>[]
+            : album.photos.asMap().entries.map((MapEntry<int, PhotoData> entry) {
+                return createTrashPhotoEntry(
+                  album: album,
+                  photo: entry.value,
+                  originalPhotoIndex: entry.key,
+                );
+              }).toList();
     setState(() {
       _albums = _albums.where((AlbumData item) => item.id != albumId).toList();
+      if (trashedEntries.isNotEmpty) {
+        _recycleBin = <TrashPhotoEntry>[...trashedEntries, ..._recycleBin];
+      }
     });
-    if (album != null) {
-      unawaited(LocalAlbumStore.deleteAlbumImages(album));
-    }
     unawaited(LocalAlbumStore.saveAlbums(_albums));
+    if (trashedEntries.isNotEmpty) {
+      unawaited(LocalAlbumStore.saveRecycleBin(_recycleBin));
+    }
   }
 
   AlbumData? _findAlbum(String albumId) {
@@ -1759,6 +1829,7 @@ class AlbumHomePage extends StatefulWidget {
     required this.onAlbumChanged,
     required this.onAlbumDeleted,
     required this.onPhotosTrashed,
+    required this.onAlbumsChanged,
     required this.onTrashPhotoRestored,
     required this.onTrashPhotoDeleted,
     required this.onTrashEmptied,
@@ -1777,6 +1848,7 @@ class AlbumHomePage extends StatefulWidget {
   final ValueChanged<AlbumData> onAlbumChanged;
   final ValueChanged<String> onAlbumDeleted;
   final ValueChanged<List<TrashPhotoEntry>> onPhotosTrashed;
+  final AlbumsChangedCallback onAlbumsChanged;
   final TrashRestoreCallback onTrashPhotoRestored;
   final ValueChanged<TrashPhotoEntry> onTrashPhotoDeleted;
   final VoidCallback onTrashEmptied;
@@ -1897,6 +1969,7 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
                   favoritePhotos: _favoritePhotos,
                   trashPhotos: _trashPhotos,
                   onPhotosTrashed: widget.onPhotosTrashed,
+                  onAlbumsChanged: widget.onAlbumsChanged,
                   onTrashPhotoRestored: widget.onTrashPhotoRestored,
                   onTrashPhotoDeleted: widget.onTrashPhotoDeleted,
                   onTrashEmptied: widget.onTrashEmptied,
@@ -1932,6 +2005,7 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
                   favoritePhotos: _favoritePhotos,
                   trashPhotos: _trashPhotos,
                   onPhotosTrashed: widget.onPhotosTrashed,
+                  onAlbumsChanged: widget.onAlbumsChanged,
                   onTrashPhotoRestored: widget.onTrashPhotoRestored,
                   onTrashPhotoDeleted: widget.onTrashPhotoDeleted,
                   onTrashEmptied: widget.onTrashEmptied,
@@ -2044,6 +2118,7 @@ class _DesktopHomeLayout extends StatelessWidget {
     required this.favoritePhotos,
     required this.trashPhotos,
     required this.onPhotosTrashed,
+    required this.onAlbumsChanged,
     required this.onTrashPhotoRestored,
     required this.onTrashPhotoDeleted,
     required this.onTrashEmptied,
@@ -2077,6 +2152,7 @@ class _DesktopHomeLayout extends StatelessWidget {
   final List<FavoritePhotoEntry> favoritePhotos;
   final List<TrashPhotoEntry> trashPhotos;
   final ValueChanged<List<TrashPhotoEntry>> onPhotosTrashed;
+  final AlbumsChangedCallback onAlbumsChanged;
   final TrashRestoreCallback onTrashPhotoRestored;
   final ValueChanged<TrashPhotoEntry> onTrashPhotoDeleted;
   final VoidCallback onTrashEmptied;
@@ -2165,6 +2241,7 @@ class _DesktopHomeLayout extends StatelessWidget {
                     favoritePhotos: favoritePhotos,
                     trashPhotos: trashPhotos,
                     onPhotosTrashed: onPhotosTrashed,
+                    onAlbumsChanged: onAlbumsChanged,
                     onTrashPhotoRestored: onTrashPhotoRestored,
                     onTrashPhotoDeleted: onTrashPhotoDeleted,
                     onTrashEmptied: onTrashEmptied,
@@ -2294,6 +2371,7 @@ class _MobileHomeLayout extends StatelessWidget {
     required this.favoritePhotos,
     required this.trashPhotos,
     required this.onPhotosTrashed,
+    required this.onAlbumsChanged,
     required this.onTrashPhotoRestored,
     required this.onTrashPhotoDeleted,
     required this.onTrashEmptied,
@@ -2319,6 +2397,7 @@ class _MobileHomeLayout extends StatelessWidget {
   final List<FavoritePhotoEntry> favoritePhotos;
   final List<TrashPhotoEntry> trashPhotos;
   final ValueChanged<List<TrashPhotoEntry>> onPhotosTrashed;
+  final AlbumsChangedCallback onAlbumsChanged;
   final TrashRestoreCallback onTrashPhotoRestored;
   final ValueChanged<TrashPhotoEntry> onTrashPhotoDeleted;
   final VoidCallback onTrashEmptied;
@@ -2367,6 +2446,7 @@ class _MobileHomeLayout extends StatelessWidget {
               favoritePhotos: favoritePhotos,
               trashPhotos: trashPhotos,
               onPhotosTrashed: onPhotosTrashed,
+              onAlbumsChanged: onAlbumsChanged,
               onTrashPhotoRestored: onTrashPhotoRestored,
               onTrashPhotoDeleted: onTrashPhotoDeleted,
               onTrashEmptied: onTrashEmptied,
@@ -3015,6 +3095,7 @@ class _ShelfScene extends StatelessWidget {
     required this.favoritePhotos,
     required this.trashPhotos,
     required this.onPhotosTrashed,
+    required this.onAlbumsChanged,
     required this.onTrashPhotoRestored,
     required this.onTrashPhotoDeleted,
     required this.onTrashEmptied,
@@ -3035,6 +3116,7 @@ class _ShelfScene extends StatelessWidget {
   final List<FavoritePhotoEntry> favoritePhotos;
   final List<TrashPhotoEntry> trashPhotos;
   final ValueChanged<List<TrashPhotoEntry>> onPhotosTrashed;
+  final AlbumsChangedCallback onAlbumsChanged;
   final TrashRestoreCallback onTrashPhotoRestored;
   final ValueChanged<TrashPhotoEntry> onTrashPhotoDeleted;
   final VoidCallback onTrashEmptied;
@@ -3205,7 +3287,9 @@ class _ShelfScene extends StatelessWidget {
                                 builder: (BuildContext context) {
                                   return AlbumDetailPage(
                                     album: album,
+                                    albums: albums,
                                     onAlbumChanged: onAlbumChanged,
+                                    onAlbumsChanged: onAlbumsChanged,
                                     onPhotosTrashed: onPhotosTrashed,
                                   );
                                 },
@@ -3234,7 +3318,9 @@ class _ShelfScene extends StatelessWidget {
                                 builder: (BuildContext context) {
                                   return AlbumDetailPage(
                                     album: album,
+                                    albums: albums,
                                     onAlbumChanged: onAlbumChanged,
+                                    onAlbumsChanged: onAlbumsChanged,
                                     onPhotosTrashed: onPhotosTrashed,
                                   );
                                 },
@@ -3285,21 +3371,22 @@ class _ShelfScene extends StatelessWidget {
                                   ),
                                   child: _DesktopFocusedAlbumStage(
                                     album: album,
+                                    onAlbumChanged: onAlbumChanged,
                                     onTap: () {
                                       Navigator.of(context).push(
                                         MaterialPageRoute<void>(
                                           builder: (BuildContext context) {
                                             return AlbumDetailPage(
                                               album: album,
+                                              albums: albums,
                                               onAlbumChanged: onAlbumChanged,
+                                              onAlbumsChanged: onAlbumsChanged,
                                               onPhotosTrashed: onPhotosTrashed,
                                             );
                                           },
                                         ),
                                       );
                                     },
-                                    onEditText: () => _editAlbum(context, album),
-                                    onEdit: () => _editAlbum(context, album),
                                   ),
                                 );
                               },
@@ -3331,8 +3418,11 @@ class _ShelfScene extends StatelessWidget {
                                               builder: (BuildContext context) {
                                                 return AlbumDetailPage(
                                                   album: album,
+                                                  albums: albums,
                                                   onAlbumChanged:
                                                       onAlbumChanged,
+                                                  onAlbumsChanged:
+                                                      onAlbumsChanged,
                                                   onPhotosTrashed:
                                                       onPhotosTrashed,
                                                 );
@@ -3343,10 +3433,7 @@ class _ShelfScene extends StatelessWidget {
                                         child: _MobileFocusedAlbumStage(
                                           album: album,
                                           active: active,
-                                          onEditText: () =>
-                                              _editAlbum(context, album),
-                                          onEdit: () =>
-                                              _editAlbum(context, album),
+                                          onAlbumChanged: onAlbumChanged,
                                         ),
                                       ),
                                     ),
@@ -3488,6 +3575,107 @@ class _ShelfScene extends StatelessWidget {
         coverOffsetX: result.coverOffsetX,
         coverOffsetY: result.coverOffsetY,
       ),
+    );
+  }
+
+  static Future<String?> _showAlbumCoverPickerDialog(
+    BuildContext context,
+    AlbumData album,
+  ) async {
+    if (album.photos.isEmpty) {
+      showPrototypeMessage(context, '当前相册还没有照片可用作封面');
+      return null;
+    }
+    return showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          child: SizedBox(
+            width: 520,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    '选择封面照片',
+                    style: Theme.of(dialogContext).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '从当前相册内部照片中选择一张作为封面。',
+                    style: Theme.of(dialogContext).textTheme.bodySmall
+                        ?.copyWith(color: const Color(0xFF8B7765)),
+                  ),
+                  const SizedBox(height: 14),
+                  Flexible(
+                    child: GridView.builder(
+                      shrinkWrap: true,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            childAspectRatio: 1,
+                          ),
+                      itemCount: album.photos.length,
+                      itemBuilder: (BuildContext context, int index) {
+                        final PhotoData photo = album.photos[index];
+                        final bool selected = photo.id == album.coverPhoto?.id;
+                        return InkWell(
+                          onTap: () {
+                            Navigator.of(dialogContext).pop(photo.id);
+                          },
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(
+                                color: selected
+                                    ? const Color(0xFFD56A5F)
+                                    : const Color(0xFFD7C7B6),
+                                width: selected ? 2 : 1,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: <Widget>[
+                                  PhotoVisual(photo: photo),
+                                  if (selected)
+                                    const Positioned(
+                                      right: 6,
+                                      top: 6,
+                                      child: Icon(
+                                        Icons.check_circle_rounded,
+                                        color: Color(0xFFD56A5F),
+                                        size: 18,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -4500,13 +4688,17 @@ class _DesktopAddAlbumSpineCard extends StatelessWidget {
 class AlbumDetailPage extends StatefulWidget {
   const AlbumDetailPage({
     required this.album,
+    required this.albums,
     required this.onAlbumChanged,
+    required this.onAlbumsChanged,
     required this.onPhotosTrashed,
     super.key,
   });
 
   final AlbumData album;
+  final List<AlbumData> albums;
   final ValueChanged<AlbumData> onAlbumChanged;
+  final AlbumsChangedCallback onAlbumsChanged;
   final ValueChanged<List<TrashPhotoEntry>> onPhotosTrashed;
 
   @override
@@ -4518,6 +4710,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   bool _isSelectionMode = false;
   bool _isImportingPhotos = false;
   final Set<String> _selectedPhotoIds = <String>{};
+
+  List<PhotoData> get _selectedPhotos {
+    return _album.photos.where((PhotoData photo) {
+      return _selectedPhotoIds.contains(photo.id);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -4531,6 +4729,25 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
 
     return Scaffold(
       appBar: AppBar(
+        flexibleSpace: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: _showDebugSectionFrames
+                        ? Border.all(
+                            color: const Color(0xFFE53935),
+                            width: 2,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+            const _SectionMarker(number: 4),
+          ],
+        ),
         leading: _isSelectionMode
             ? IconButton(
                 onPressed: _exitSelectionMode,
@@ -4552,6 +4769,18 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 ],
               ),
         actions: <Widget>[
+          if (!_isSelectionMode)
+            TextButton.icon(
+              onPressed: _album.photos.isEmpty ? null : _enterSelectionMode,
+              icon: const Icon(Icons.select_all_rounded),
+              label: const Text('批量选中'),
+            ),
+          if (_isSelectionMode)
+            TextButton.icon(
+              onPressed: _exitSelectionMode,
+              icon: const Icon(Icons.deselect_rounded),
+              label: const Text('取消批量选中'),
+            ),
           if (_isSelectionMode)
             TextButton(
               onPressed: _toggleSelectAll,
@@ -4568,6 +4797,22 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                   : _deleteSelectedPhotos,
               tooltip: '批量删除',
               icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          if (_isSelectionMode)
+            IconButton(
+              onPressed: _selectedPhotoIds.isEmpty
+                  ? null
+                  : _moveSelectedPhotos,
+              tooltip: '移动',
+              icon: const Icon(Icons.drive_file_move_rounded),
+            ),
+          if (_isSelectionMode)
+            IconButton(
+              onPressed: _selectedPhotoIds.isEmpty
+                  ? null
+                  : _copySelectedPhotos,
+              tooltip: '复制',
+              icon: const Icon(Icons.content_copy_rounded),
             )
           else
             Padding(
@@ -4582,15 +4827,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       floatingActionButton: isDesktop
           ? null
           : _isSelectionMode
-          ? FloatingActionButton.extended(
-              backgroundColor: const Color(0xFF9A6F47),
-              foregroundColor: Colors.white,
-              onPressed: _selectedPhotoIds.isEmpty
-                  ? null
-                  : _deleteSelectedPhotos,
-              icon: const Icon(Icons.delete_outline_rounded),
-              label: Text('删除 ${_selectedPhotoIds.length} 张'),
-            )
+          ? null
           : FloatingActionButton(
               backgroundColor: const Color(0xFF9A6F47),
               foregroundColor: Colors.white,
@@ -4620,46 +4857,16 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 children: <Widget>[
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                    padding: const EdgeInsets.all(3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFFCF7),
+                      color: Colors.transparent,
                       borderRadius: BorderRadius.circular(5),
-                      border: Border.all(color: const Color(0xFFE5D7C4)),
                     ),
                     child: Text(
                       _album.description,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: const Color(0xFF6F5A49),
                         height: 1.55,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _editAlbumDetails,
-                        borderRadius: BorderRadius.circular(5),
-                        child: Ink(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFFCF7).withValues(
-                              alpha: 0.92,
-                            ),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(0xFFE5D7C4),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.edit_outlined,
-                            size: 18,
-                            color: Color(0xFF5A3E2A),
-                          ),
-                        ),
                       ),
                     ),
                   ),
@@ -4678,19 +4885,39 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       ),
                     ),
                   ),
-                  const _SectionMarker(number: 4),
+                  const _SectionMarker(number: 5),
                 ],
               ),
               const SizedBox(height: 14),
               Expanded(
-                child: MasonryPhotoGrid(
-                  album: _album,
-                  onAlbumChanged: _replaceAlbum,
-                  onPhotosTrashed: widget.onPhotosTrashed,
-                  selectionMode: _isSelectionMode,
-                  selectedPhotoIds: _selectedPhotoIds,
-                  onToggleSelection: _togglePhotoSelection,
-                  onStartSelection: _startSelection,
+                child: Stack(
+                  children: <Widget>[
+                    MasonryPhotoGrid(
+                      album: _album,
+                      onAlbumChanged: _replaceAlbum,
+                      onPhotosTrashed: widget.onPhotosTrashed,
+                      selectionMode: _isSelectionMode,
+                      selectedPhotoIds: _selectedPhotoIds,
+                      onToggleSelection: _togglePhotoSelection,
+                      onStartSelection: _startSelection,
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: _showDebugSectionFrames
+                                ? Border.all(
+                                    color: const Color(0xFFE53935),
+                                    width: 2,
+                                  )
+                                : null,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const _SectionMarker(number: 6),
+                  ],
                 ),
               ),
             ],
@@ -4698,51 +4925,6 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         ),
       ),
     );
-  }
-
-  Future<void> _editAlbumDetails() async {
-    final TextEditingController descriptionController = TextEditingController(
-      text: _album.description,
-    );
-    final String? result = await showDialog<String>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('编辑描述'),
-          content: TextField(
-            controller: descriptionController,
-            minLines: 4,
-            maxLines: 10,
-            decoration: const InputDecoration(
-              hintText: '输入相册描述',
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(
-                descriptionController.text,
-              ),
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
-    );
-    if (!mounted || result == null) {
-      return;
-    }
-    final String nextDescription = result.trim();
-    final AlbumData updatedAlbum = _album.copyWith(
-      description: nextDescription,
-    );
-    setState(() {
-      _album = updatedAlbum;
-    });
-    widget.onAlbumChanged(updatedAlbum);
   }
 
   Future<void> _importPhotosFromFiles() async {
@@ -4835,9 +5017,6 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       _selectedPhotoIds.removeWhere((String id) {
         return !_album.photos.any((PhotoData photo) => photo.id == id);
       });
-      if (_selectedPhotoIds.isEmpty) {
-        _isSelectionMode = false;
-      }
     });
     widget.onAlbumChanged(album);
   }
@@ -4851,6 +5030,13 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     });
   }
 
+  void _enterSelectionMode() {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedPhotoIds.clear();
+    });
+  }
+
   void _togglePhotoSelection(PhotoData photo) {
     setState(() {
       _isSelectionMode = true;
@@ -4858,9 +5044,6 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         _selectedPhotoIds.remove(photo.id);
       } else {
         _selectedPhotoIds.add(photo.id);
-      }
-      if (_selectedPhotoIds.isEmpty) {
-        _isSelectionMode = false;
       }
     });
   }
@@ -4880,7 +5063,6 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       _isSelectionMode = true;
       if (_selectedPhotoIds.length == _album.photos.length) {
         _selectedPhotoIds.clear();
-        _isSelectionMode = false;
       } else {
         _selectedPhotoIds
           ..clear()
@@ -4928,7 +5110,13 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     final List<TrashPhotoEntry> trashedEntries = deletedPhotos.map((
       PhotoData photo,
     ) {
-      return createTrashPhotoEntry(album: _album, photo: photo);
+      return createTrashPhotoEntry(
+        album: _album,
+        photo: photo,
+        originalPhotoIndex: _album.photos.indexWhere(
+          (PhotoData item) => item.id == photo.id,
+        ),
+      );
     }).toList();
 
     final AlbumData updatedAlbum = _album.withRemovedPhotos(_selectedPhotoIds);
@@ -4940,6 +5128,272 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     widget.onAlbumChanged(updatedAlbum);
     widget.onPhotosTrashed(trashedEntries);
     showPrototypeMessage(context, '已移入回收站 ${deletedPhotos.length} 张照片');
+  }
+
+  Future<void> _moveSelectedPhotos() async {
+    await _transferSelectedPhotos(copyOnly: false);
+  }
+
+  Future<void> _copySelectedPhotos() async {
+    await _transferSelectedPhotos(copyOnly: true);
+  }
+
+  Future<void> _transferSelectedPhotos({required bool copyOnly}) async {
+    if (_selectedPhotoIds.isEmpty) {
+      return;
+    }
+    final _AlbumTransferTarget? target = await _showAlbumTransferTargetPicker(
+      context,
+      copyOnly: copyOnly,
+    );
+    if (!mounted || target == null) {
+      return;
+    }
+
+    final List<PhotoData> selectedPhotos = _selectedPhotos;
+    if (selectedPhotos.isEmpty) {
+      return;
+    }
+
+    final List<AlbumData> allAlbums = List<AlbumData>.from(widget.albums);
+    final int sourceIndex = allAlbums.indexWhere(
+      (AlbumData album) => album.id == _album.id,
+    );
+    if (sourceIndex == -1) {
+      return;
+    }
+
+    AlbumData sourceAlbum = allAlbums[sourceIndex];
+    AlbumData? targetAlbum;
+    int targetIndex = -1;
+    if (target.createNew) {
+      final String? newAlbumName = await _promptNewAlbumName(context);
+      if (!mounted || newAlbumName == null) {
+        return;
+      }
+      final DateTime now = DateTime.now();
+      targetAlbum = AlbumData(
+        id: 'album-${now.microsecondsSinceEpoch}',
+        title: newAlbumName,
+        subtitle: '${selectedPhotos.length} 张照片 · ${now.year}年${now.month}月',
+        description: '',
+        style: _album.style,
+        photos: const <PhotoData>[],
+      );
+      allAlbums.insert(0, targetAlbum);
+      targetIndex = 0;
+    } else {
+      targetIndex = allAlbums.indexWhere(
+        (AlbumData album) => album.id == target.albumId,
+      );
+      if (targetIndex == -1) {
+        return;
+      }
+      targetAlbum = allAlbums[targetIndex];
+    }
+
+    final List<PhotoData> transferPhotos = <PhotoData>[];
+    for (final PhotoData photo in selectedPhotos) {
+      if (copyOnly) {
+        final String? duplicatedImagePath = await LocalAlbumStore
+            .duplicateManagedImage(
+              photo.imagePath,
+              albumId: targetAlbum.id,
+            );
+        transferPhotos.add(
+          photo.copyWith(
+            id: 'copy-${DateTime.now().microsecondsSinceEpoch}-${transferPhotos.length}',
+            imagePath: duplicatedImagePath ?? photo.imagePath,
+          ),
+        );
+      } else {
+        transferPhotos.add(photo);
+      }
+    }
+
+    AlbumData updatedTarget = targetAlbum;
+    for (final PhotoData photo in transferPhotos.reversed) {
+      updatedTarget = updatedTarget.withInsertedPhoto(photo);
+    }
+    allAlbums[targetIndex] = updatedTarget;
+
+    if (!copyOnly) {
+      sourceAlbum = sourceAlbum.withRemovedPhotos(_selectedPhotoIds);
+      allAlbums[sourceIndex] = sourceAlbum;
+    }
+
+    setState(() {
+      _album = copyOnly ? _album : sourceAlbum;
+      _isSelectionMode = false;
+      _selectedPhotoIds.clear();
+    });
+    widget.onAlbumsChanged(allAlbums);
+    if (!copyOnly) {
+      widget.onAlbumChanged(sourceAlbum);
+    }
+    if (!mounted) {
+      return;
+    }
+    showPrototypeMessage(
+      context,
+      copyOnly
+          ? '已复制 ${selectedPhotos.length} 张照片到“${updatedTarget.title}”'
+          : '已移动 ${selectedPhotos.length} 张照片到“${updatedTarget.title}”',
+    );
+  }
+
+  Future<_AlbumTransferTarget?> _showAlbumTransferTargetPicker(
+    BuildContext context, {
+    required bool copyOnly,
+  }) async {
+    final List<AlbumData> targetAlbums = widget.albums.where((AlbumData album) {
+      return album.id != _album.id;
+    }).toList();
+    return showDialog<_AlbumTransferTarget>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          backgroundColor: Theme.of(dialogContext).colorScheme.surface,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          child: SizedBox(
+            width: 360,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    copyOnly ? '复制到其他相册' : '移动到其他相册',
+                    style: Theme.of(dialogContext).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: <Widget>[
+                        for (final AlbumData album in targetAlbums)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.of(dialogContext).pop(
+                                  _AlbumTransferTarget.existing(album.id),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: const Color(0xFFBDA58C),
+                                  ),
+                                ),
+                                child: Text(
+                                  album.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(dialogContext)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
+                                        color: const Color(0xFF4F3827),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        InkWell(
+                          onTap: () {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop(const _AlbumTransferTarget.createNew());
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: const Color(0xFFBDA58C),
+                              ),
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                const Icon(Icons.add_rounded, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '新建列表',
+                                  style: Theme.of(dialogContext)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
+                                        color: const Color(0xFF4F3827),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<String?> _promptNewAlbumName(BuildContext context) async {
+    final TextEditingController controller = TextEditingController();
+    final String? result = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('新建列表'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: '输入相册名称',
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(controller.text.trim());
+              },
+              child: const Text('创建'),
+            ),
+          ],
+        );
+      },
+    );
+    if (result == null || result.trim().isEmpty) {
+      return null;
+    }
+    return result.trim();
   }
 }
 
@@ -5008,6 +5462,9 @@ class MasonryPhotoGrid extends StatelessWidget {
                           width: itemWidth,
                           selectionMode: selectionMode,
                           selected: selectedPhotoIds.contains(photo.id),
+                          selectedBorderColor: const Color(0xFFFF3B30),
+                          selectedBorderWidth: 2,
+                          showSelectionCheckmark: false,
                           onTap: () {
                             if (selectionMode) {
                               onToggleSelection(photo);
@@ -5429,9 +5886,9 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       zoom: _zoom,
       turns: _rotationTurns,
       panOffset: _panOffset,
-      onPanUpdate: (Offset delta) {
+      onPanUpdate: (Offset nextOffset) {
         setState(() {
-          _panOffset += delta;
+          _panOffset = nextOffset;
         });
       },
       toolbar: _buildToolbar(),
@@ -5474,6 +5931,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
             ),
           ),
           IconButton(
+            tooltip: '全屏模式',
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -5481,6 +5939,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                     photo: photo,
                     initialTurns: _rotationTurns,
                     initialZoom: _zoom,
+                    initialPanOffset: _panOffset,
                   ),
                 ),
               );
@@ -5515,7 +5974,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                               ),
                             ),
                           ),
-                          const _SectionMarker(number: 5),
+                          const _SectionMarker(number: 7),
                         ],
                       ),
                     )
@@ -5559,7 +6018,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                               ),
                             ),
                           ),
-                          const _SectionMarker(number: 5),
+                          const _SectionMarker(number: 7),
                         ],
                       ),
                     ),
@@ -5875,6 +6334,9 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     final TrashPhotoEntry trashedEntry = createTrashPhotoEntry(
       album: widget.album,
       photo: photo,
+      originalPhotoIndex: widget.album.photos.indexWhere(
+        (PhotoData item) => item.id == photo.id,
+      ),
     );
     final AlbumData updatedAlbum = widget.album.withRemovedPhoto(photo.id);
     if (!mounted) {
@@ -5892,12 +6354,14 @@ class FullscreenPhotoPage extends StatefulWidget {
     required this.photo,
     required this.initialTurns,
     required this.initialZoom,
+    this.initialPanOffset = Offset.zero,
     super.key,
   });
 
   final PhotoData photo;
   final double initialTurns;
   final double initialZoom;
+  final Offset initialPanOffset;
 
   @override
   State<FullscreenPhotoPage> createState() => _FullscreenPhotoPageState();
@@ -5906,12 +6370,14 @@ class FullscreenPhotoPage extends StatefulWidget {
 class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
   late double _turns;
   late double _zoom;
+  late Offset _panOffset;
 
   @override
   void initState() {
     super.initState();
     _turns = widget.initialTurns;
     _zoom = widget.initialZoom;
+    _panOffset = widget.initialPanOffset;
   }
 
   @override
@@ -5919,10 +6385,27 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+            Positioned.fill(
+              child: _DetailImageFrame(
+                photo: widget.photo,
+                zoom: _zoom,
+                turns: _turns,
+                panOffset: _panOffset,
+                onPanUpdate: (Offset nextOffset) {
+                  setState(() {
+                    _panOffset = nextOffset;
+                  });
+                },
+                desktop: true,
+                backgroundColor: const Color(0xFF141414),
+              ),
+            ),
+            Positioned(
+              top: 6,
+              left: 8,
+              right: 8,
               child: Row(
                 children: <Widget>[
                   IconButton(
@@ -5934,6 +6417,8 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                     child: Center(
                       child: Text(
                         widget.photo.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
@@ -5945,43 +6430,10 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                 ],
               ),
             ),
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: AspectRatio(
-                    aspectRatio:
-                        widget.photo.orientation == PhotoOrientation.portrait
-                        ? 0.72
-                        : 1.58,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(5),
-                        boxShadow: const <BoxShadow>[
-                          BoxShadow(
-                            color: Color(0x44000000),
-                            blurRadius: 30,
-                            offset: Offset(0, 16),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(5),
-                        child: Transform.rotate(
-                          angle: math.pi * 2 * _turns,
-                          child: Transform.scale(
-                            scale: _zoom,
-                            child: PhotoVisual(photo: widget.photo),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 22),
+            Positioned(
+              left: 18,
+              right: 18,
+              bottom: 22,
               child: Row(
                 children: <Widget>[
                   Expanded(
@@ -5991,6 +6443,9 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                       onTap: () {
                         setState(() {
                           _zoom = (_zoom - 0.2).clamp(0.8, 2.0);
+                          if (_zoom <= 1) {
+                            _panOffset = Offset.zero;
+                          }
                         });
                       },
                     ),
@@ -6230,6 +6685,50 @@ class _LandscapeDetailLayout extends StatelessWidget {
   }
 }
 
+double _viewerPhotoAspectRatio(PhotoData photo, double turns) {
+  final double baseAspect = photo.orientation == PhotoOrientation.portrait
+      ? 0.72
+      : 1.58;
+  final int quarterTurns = ((turns * 4).round() % 4 + 4) % 4;
+  return quarterTurns.isOdd ? 1 / baseAspect : baseAspect;
+}
+
+Size _containedPhotoSize({
+  required Size viewportSize,
+  required double photoAspectRatio,
+}) {
+  final double viewportAspect = viewportSize.width / viewportSize.height;
+  if (viewportAspect > photoAspectRatio) {
+    final double height = viewportSize.height;
+    return Size(height * photoAspectRatio, height);
+  }
+  final double width = viewportSize.width;
+  return Size(width, width / photoAspectRatio);
+}
+
+Offset _clampPhotoPanOffset({
+  required Size viewportSize,
+  required double photoAspectRatio,
+  required double zoom,
+  required Offset panOffset,
+}) {
+  if (zoom <= 1) {
+    return Offset.zero;
+  }
+  final Size containedSize = _containedPhotoSize(
+    viewportSize: viewportSize,
+    photoAspectRatio: photoAspectRatio,
+  );
+  final double scaledWidth = containedSize.width * zoom;
+  final double scaledHeight = containedSize.height * zoom;
+  final double maxDx = math.max(0, (scaledWidth - viewportSize.width) / 2);
+  final double maxDy = math.max(0, (scaledHeight - viewportSize.height) / 2);
+  return Offset(
+    panOffset.dx.clamp(-maxDx, maxDx),
+    panOffset.dy.clamp(-maxDy, maxDy),
+  );
+}
+
 class _DragDivider extends StatelessWidget {
   const _DragDivider({required this.onHorizontalDragUpdate});
 
@@ -6282,6 +6781,7 @@ class _DetailImageFrame extends StatelessWidget {
     required this.panOffset,
     required this.onPanUpdate,
     required this.desktop,
+    this.backgroundColor = const Color(0xFFF0E6DA),
   });
 
   final PhotoData photo;
@@ -6290,38 +6790,60 @@ class _DetailImageFrame extends StatelessWidget {
   final Offset panOffset;
   final ValueChanged<Offset> onPanUpdate;
   final bool desktop;
+  final Color backgroundColor;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0E6DA),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(5),
-        child: GestureDetector(
-          onPanUpdate: zoom > 1
-              ? (DragUpdateDetails details) => onPanUpdate(details.delta)
-              : null,
-          child: SizedBox.expand(
-            child: Transform.translate(
-              offset: panOffset,
-              child: Transform.rotate(
-                angle: math.pi * 2 * turns,
-                child: Transform.scale(
-                  alignment: Alignment.center,
-                  scale: zoom,
-                  child: PhotoVisual(
-                    photo: photo,
-                    fit: BoxFit.contain,
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final Size viewportSize = constraints.biggest;
+        final double photoAspectRatio = _viewerPhotoAspectRatio(photo, turns);
+        final Offset effectivePanOffset = _clampPhotoPanOffset(
+          viewportSize: viewportSize,
+          photoAspectRatio: photoAspectRatio,
+          zoom: zoom,
+          panOffset: panOffset,
+        );
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: GestureDetector(
+              onPanUpdate: zoom > 1
+                  ? (DragUpdateDetails details) {
+                      onPanUpdate(
+                        _clampPhotoPanOffset(
+                          viewportSize: viewportSize,
+                          photoAspectRatio: photoAspectRatio,
+                          zoom: zoom,
+                          panOffset: effectivePanOffset + details.delta,
+                        ),
+                      );
+                    }
+                  : null,
+              child: SizedBox.expand(
+                child: Transform.translate(
+                  offset: effectivePanOffset,
+                  child: Transform.rotate(
+                    angle: math.pi * 2 * turns,
+                    child: Transform.scale(
+                      alignment: Alignment.center,
+                      scale: zoom,
+                      child: PhotoVisual(
+                        photo: photo,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -6794,6 +7316,9 @@ class _PhotoTile extends StatelessWidget {
     required this.onLongPress,
     required this.selectionMode,
     required this.selected,
+    this.selectedBorderColor,
+    this.selectedBorderWidth = 2,
+    this.showSelectionCheckmark = true,
   });
 
   final PhotoData photo;
@@ -6802,6 +7327,9 @@ class _PhotoTile extends StatelessWidget {
   final VoidCallback onLongPress;
   final bool selectionMode;
   final bool selected;
+  final Color? selectedBorderColor;
+  final double selectedBorderWidth;
+  final bool showSelectionCheckmark;
 
   @override
   Widget build(BuildContext context) {
@@ -6817,8 +7345,10 @@ class _PhotoTile extends StatelessWidget {
           color: const Color(0xFFFFFCF7),
           borderRadius: BorderRadius.circular(5),
           border: Border.all(
-            color: selected ? const Color(0xFF9A6F47) : Colors.transparent,
-            width: 2,
+            color: selected
+                ? (selectedBorderColor ?? const Color(0xFF9A6F47))
+                : Colors.transparent,
+            width: selected ? selectedBorderWidth : 2,
           ),
           boxShadow: const <BoxShadow>[
             BoxShadow(
@@ -6850,7 +7380,7 @@ class _PhotoTile extends StatelessWidget {
                                 : const Color(0x22000000),
                           ),
                         ),
-                      if (selectionMode)
+                      if (selectionMode && showSelectionCheckmark)
                         Positioned(
                           top: 12,
                           right: 12,
@@ -6906,21 +7436,215 @@ class _PhotoTile extends StatelessWidget {
   }
 }
 
-class _MobileFocusedAlbumStage extends StatelessWidget {
+class _AlbumTextEditorPane extends StatelessWidget {
+  const _AlbumTextEditorPane({
+    required this.album,
+    required this.compact,
+    required this.isEditing,
+    required this.titleController,
+    required this.descriptionController,
+    required this.onStartEditing,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  final AlbumData album;
+  final bool compact;
+  final bool isEditing;
+  final TextEditingController titleController;
+  final TextEditingController descriptionController;
+  final VoidCallback onStartEditing;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              child: isEditing
+                  ? TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: '输入相册名字',
+                        border: OutlineInputBorder(),
+                      ),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: const Color(0xFF4A3424),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : Text(
+                      album.title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: const Color(0xFF4A3424),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 8),
+            if (isEditing)
+              IconButton(
+                tooltip: '保存相册信息',
+                onPressed: onSave,
+                icon: const Icon(Icons.check_rounded),
+              )
+            else
+              IconButton(
+                tooltip: '编辑相册文字',
+                onPressed: onStartEditing,
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            if (isEditing)
+              IconButton(
+                tooltip: '取消编辑',
+                onPressed: onCancel,
+                icon: const Icon(Icons.close_rounded),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          album.subtitle,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: const Color(0xFF8A7767),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          width: 42,
+          height: 2,
+          color: const Color(0xFFC89A6A),
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: isEditing
+              ? TextField(
+                  controller: descriptionController,
+                  maxLines: null,
+                  expands: true,
+                  decoration: const InputDecoration(
+                    hintText: '输入相册描述',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.all(12),
+                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF5E4A3A),
+                    height: compact ? 1.65 : 1.8,
+                  ),
+                )
+              : SingleChildScrollView(
+                  child: Text(
+                    album.description.trim().isEmpty
+                        ? '这个相册还没有描述。'
+                        : album.description,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF5E4A3A),
+                      height: compact ? 1.75 : 1.85,
+                    ),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileFocusedAlbumStage extends StatefulWidget {
   const _MobileFocusedAlbumStage({
     required this.album,
     required this.active,
-    required this.onEditText,
-    required this.onEdit,
+    required this.onAlbumChanged,
   });
 
   final AlbumData album;
   final bool active;
-  final VoidCallback onEditText;
-  final VoidCallback onEdit;
+  final ValueChanged<AlbumData> onAlbumChanged;
+
+  @override
+  State<_MobileFocusedAlbumStage> createState() =>
+      _MobileFocusedAlbumStageState();
+}
+
+class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  bool _editingText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.album.title);
+    _descriptionController =
+        TextEditingController(text: widget.album.description);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MobileFocusedAlbumStage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.album != widget.album && !_editingText) {
+      _titleController.text = widget.album.title;
+      _descriptionController.text = widget.album.description;
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  void _startEditing() {
+    setState(() {
+      _editingText = true;
+      _titleController.text = widget.album.title;
+      _descriptionController.text = widget.album.description;
+    });
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _editingText = false;
+      _titleController.text = widget.album.title;
+      _descriptionController.text = widget.album.description;
+    });
+  }
+
+  void _saveEditing() {
+    widget.onAlbumChanged(
+      widget.album.copyWith(
+        title: _titleController.text.trim().isEmpty
+            ? widget.album.title
+            : _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+      ),
+    );
+    setState(() {
+      _editingText = false;
+    });
+  }
+
+  Future<void> _pickCover() async {
+    final String? coverPhotoId = await _ShelfScene._showAlbumCoverPickerDialog(
+      context,
+      widget.album,
+    );
+    if (!mounted || coverPhotoId == null) {
+      return;
+    }
+    widget.onAlbumChanged(widget.album.copyWith(coverPhotoId: coverPhotoId));
+  }
 
   @override
   Widget build(BuildContext context) {
+    final AlbumData album = widget.album;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         return FittedBox(
@@ -6953,8 +7677,8 @@ class _MobileFocusedAlbumStage extends StatelessWidget {
                         duration: const Duration(milliseconds: 240),
                         curve: Curves.easeOutCubic,
                         padding: EdgeInsets.only(
-                          top: active ? 0 : 10,
-                          bottom: active ? 0 : 6,
+                          top: widget.active ? 0 : 10,
+                          bottom: widget.active ? 0 : 6,
                         ),
                         child: AspectRatio(
                           aspectRatio: 1.04,
@@ -7006,6 +7730,18 @@ class _MobileFocusedAlbumStage extends StatelessWidget {
                                         ),
                                       ),
                                       Positioned(
+                                        top: 10,
+                                        right: 10,
+                                        child: IconButton.filledTonal(
+                                          tooltip: '编辑封面',
+                                          onPressed: _pickCover,
+                                          icon: const Icon(
+                                            Icons.edit_outlined,
+                                            size: 18,
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
                                         left: 20,
                                         right: 20,
                                         bottom: 20,
@@ -7050,65 +7786,18 @@ class _MobileFocusedAlbumStage extends StatelessWidget {
                         width: double.infinity,
                         padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFFCF7),
+                          color: Colors.transparent,
                           borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: const Color(0xFFE3D7C8)),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Row(
-                              children: <Widget>[
-                                Expanded(
-                                  child: Text(
-                                    album.title,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(
-                                          color: const Color(0xFF4A3424),
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: '编辑描述',
-                                  onPressed: onEditText,
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 18,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              album.subtitle,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF8A7767)),
-                            ),
-                            const SizedBox(height: 14),
-                            Container(
-                              width: 42,
-                              height: 2,
-                              color: const Color(0xFFC89A6A),
-                            ),
-                            const SizedBox(height: 14),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: Text(
-                                  album.description.trim().isEmpty
-                                      ? '这个相册还没有描述。'
-                                      : album.description,
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        color: const Color(0xFF5E4A3A),
-                                        height: 1.75,
-                                      ),
-                                ),
-                              ),
-                            ),
-                          ],
+                        child: _AlbumTextEditorPane(
+                          album: album,
+                          compact: true,
+                          isEditing: _editingText,
+                          titleController: _titleController,
+                          descriptionController: _descriptionController,
+                          onStartEditing: _startEditing,
+                          onCancel: _cancelEditing,
+                          onSave: _saveEditing,
                         ),
                       ),
                     ),
@@ -7123,21 +7812,95 @@ class _MobileFocusedAlbumStage extends StatelessWidget {
   }
 }
 
-class _DesktopFocusedAlbumStage extends StatelessWidget {
+class _DesktopFocusedAlbumStage extends StatefulWidget {
   const _DesktopFocusedAlbumStage({
     required this.album,
     required this.onTap,
-    required this.onEditText,
-    required this.onEdit,
+    required this.onAlbumChanged,
   });
 
   final AlbumData album;
   final VoidCallback onTap;
-  final VoidCallback onEditText;
-  final VoidCallback onEdit;
+  final ValueChanged<AlbumData> onAlbumChanged;
+
+  @override
+  State<_DesktopFocusedAlbumStage> createState() =>
+      _DesktopFocusedAlbumStageState();
+}
+
+class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  bool _editingText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.album.title);
+    _descriptionController =
+        TextEditingController(text: widget.album.description);
+  }
+
+  @override
+  void didUpdateWidget(covariant _DesktopFocusedAlbumStage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.album != widget.album && !_editingText) {
+      _titleController.text = widget.album.title;
+      _descriptionController.text = widget.album.description;
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  void _startEditing() {
+    setState(() {
+      _editingText = true;
+      _titleController.text = widget.album.title;
+      _descriptionController.text = widget.album.description;
+    });
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _editingText = false;
+      _titleController.text = widget.album.title;
+      _descriptionController.text = widget.album.description;
+    });
+  }
+
+  void _saveEditing() {
+    widget.onAlbumChanged(
+      widget.album.copyWith(
+        title: _titleController.text.trim().isEmpty
+            ? widget.album.title
+            : _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+      ),
+    );
+    setState(() {
+      _editingText = false;
+    });
+  }
+
+  Future<void> _pickCover() async {
+    final String? coverPhotoId = await _ShelfScene._showAlbumCoverPickerDialog(
+      context,
+      widget.album,
+    );
+    if (!mounted || coverPhotoId == null) {
+      return;
+    }
+    widget.onAlbumChanged(widget.album.copyWith(coverPhotoId: coverPhotoId));
+  }
 
   @override
   Widget build(BuildContext context) {
+    final AlbumData album = widget.album;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFFFFFCF7).withValues(alpha: 0.90),
@@ -7158,7 +7921,7 @@ class _DesktopFocusedAlbumStage extends StatelessWidget {
             Expanded(
               flex: 5,
               child: GestureDetector(
-                onTap: onTap,
+                onTap: widget.onTap,
                 child: AspectRatio(
                   aspectRatio: 1.18,
                   child: DecoratedBox(
@@ -7208,6 +7971,18 @@ class _DesktopFocusedAlbumStage extends StatelessWidget {
                                 ),
                               ),
                               Positioned(
+                                top: 14,
+                                right: 14,
+                                child: IconButton.filledTonal(
+                                  tooltip: '编辑封面',
+                                  onPressed: _pickCover,
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
                                 left: 24,
                                 right: 24,
                                 bottom: 24,
@@ -7251,64 +8026,18 @@ class _DesktopFocusedAlbumStage extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.transparent,
                   borderRadius: BorderRadius.circular(5),
-                  border: Border.all(color: Colors.transparent),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              album.title,
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(
-                                    color: const Color(0xFF4A3424),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: '编辑描述',
-                            onPressed: onEditText,
-                            icon: const Icon(
-                              Icons.edit_outlined,
-                              size: 18,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        album.subtitle,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF8A7767),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        width: 42,
-                        height: 2,
-                        color: const Color(0xFFC89A6A),
-                      ),
-                      const SizedBox(height: 18),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Text(
-                            album.description.trim().isEmpty
-                                ? '这个相册还没有描述。'
-                                : album.description,
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(
-                                  color: const Color(0xFF5E4A3A),
-                                  height: 1.85,
-                                ),
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: _AlbumTextEditorPane(
+                    album: album,
+                    compact: false,
+                    isEditing: _editingText,
+                    titleController: _titleController,
+                    descriptionController: _descriptionController,
+                    onStartEditing: _startEditing,
+                    onCancel: _cancelEditing,
+                    onSave: _saveEditing,
                   ),
                 ),
               ),
@@ -7597,7 +8326,7 @@ class _FavoritePhotoTile extends StatelessWidget {
   }
 }
 
-class _TrashPhotoScene extends StatelessWidget {
+class _TrashPhotoScene extends StatefulWidget {
   const _TrashPhotoScene({
     required this.entries,
     required this.desktop,
@@ -7617,29 +8346,51 @@ class _TrashPhotoScene extends StatelessWidget {
   final String? backgroundImagePath;
 
   @override
+  State<_TrashPhotoScene> createState() => _TrashPhotoSceneState();
+}
+
+class _TrashPhotoSceneState extends State<_TrashPhotoScene> {
+  final Set<String> _selectedEntryIds = <String>{};
+  bool _selectionMode = false;
+
+  bool get _isSelectionMode => _selectionMode;
+
+  @override
+  void didUpdateWidget(covariant _TrashPhotoScene oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final Set<String> availableIds = widget.entries
+        .map((TrashPhotoEntry entry) => entry.id)
+        .toSet();
+    _selectedEntryIds.removeWhere((String id) => !availableIds.contains(id));
+    if (widget.entries.isEmpty) {
+      _selectionMode = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final bool hasCustomBackground =
-        backgroundImagePath != null &&
-        backgroundImagePath!.isNotEmpty &&
-        File(backgroundImagePath!).existsSync();
+        widget.backgroundImagePath != null &&
+        widget.backgroundImagePath!.isNotEmpty &&
+        File(widget.backgroundImagePath!).existsSync();
 
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: desktop ? 4 : 18,
-        vertical: desktop ? 0 : 12,
+        horizontal: widget.desktop ? 4 : 18,
+        vertical: widget.desktop ? 0 : 12,
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(5),
           boxShadow: <BoxShadow>[
             BoxShadow(
-              color: desktop
+              color: widget.desktop
                   ? const Color(0x22000000)
                   : Theme.of(
                       context,
                     ).colorScheme.primary.withValues(alpha: 0.10),
-              blurRadius: desktop ? 26 : 20,
-              offset: Offset(0, desktop ? 18 : 16),
+              blurRadius: widget.desktop ? 26 : 20,
+              offset: Offset(0, widget.desktop ? 18 : 16),
             ),
           ],
         ),
@@ -7665,27 +8416,31 @@ class _TrashPhotoScene extends StatelessWidget {
               if (hasCustomBackground)
                 Positioned.fill(
                   child: Opacity(
-                    opacity: desktop ? 0.16 : 0.12,
+                    opacity: widget.desktop ? 0.16 : 0.12,
                     child: Image.file(
-                      File(backgroundImagePath!),
+                      File(widget.backgroundImagePath!),
                       fit: BoxFit.cover,
                     ),
                   ),
                 ),
-              if (entries.isEmpty)
+              if (widget.entries.isEmpty)
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    desktop ? 26 : 14,
-                    desktop ? 24 : 14,
-                    desktop ? 26 : 14,
-                    desktop ? 18 : 14,
+                    widget.desktop ? 26 : 14,
+                    widget.desktop ? 24 : 14,
+                    widget.desktop ? 26 : 14,
+                    widget.desktop ? 18 : 14,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       _TrashPhotoSceneHeader(
-                        entryCount: entries.length,
+                        entryCount: widget.entries.length,
                         onEmptyPressed: null,
+                        onSelectionPressed: null,
+                        onRestoreSelectedPressed: null,
+                        selectionMode: false,
+                        selectedCount: 0,
                       ),
                       const SizedBox(height: 18),
                       Expanded(
@@ -7705,7 +8460,9 @@ class _TrashPhotoScene extends StatelessWidget {
                               ),
                             ),
                             child: Text(
-                              hasActiveSearch ? '没有找到匹配的回收站照片。' : '回收站里还没有照片。',
+                              widget.hasActiveSearch
+                                  ? '没有找到匹配的回收站照片。'
+                                  : '回收站里还没有照片。',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(context)
@@ -7723,24 +8480,31 @@ class _TrashPhotoScene extends StatelessWidget {
               else
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    desktop ? 26 : 14,
-                    desktop ? 24 : 14,
-                    desktop ? 26 : 14,
-                    desktop ? 18 : 14,
+                    widget.desktop ? 26 : 14,
+                    widget.desktop ? 24 : 14,
+                    widget.desktop ? 26 : 14,
+                    widget.desktop ? 18 : 14,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       _TrashPhotoSceneHeader(
-                        entryCount: entries.length,
+                        entryCount: widget.entries.length,
                         onEmptyPressed: () => _handleEmptyTrash(context),
+                        onSelectionPressed: _toggleSelectionMode,
+                        onRestoreSelectedPressed: () => _restoreSelected(context),
+                        selectionMode: _isSelectionMode,
+                        selectedCount: _selectedEntryIds.length,
                       ),
                       const SizedBox(height: 18),
                       Expanded(
                         child: _TrashPhotoGrid(
-                          entries: entries,
-                          onTrashPhotoRestored: onTrashPhotoRestored,
-                          onTrashPhotoDeleted: onTrashPhotoDeleted,
+                          entries: widget.entries,
+                          onTrashPhotoRestored: widget.onTrashPhotoRestored,
+                          onTrashPhotoDeleted: widget.onTrashPhotoDeleted,
+                          selectionMode: _isSelectionMode,
+                          selectedEntryIds: _selectedEntryIds,
+                          onSelectionChanged: _toggleEntrySelection,
                         ),
                       ),
                     ],
@@ -7759,7 +8523,7 @@ class _TrashPhotoScene extends StatelessWidget {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('清空回收站'),
-          content: Text('确认彻底删除回收站里的 ${entries.length} 张照片吗？此操作不可撤销。'),
+          content: Text('确认彻底删除回收站里的 ${widget.entries.length} 张照片吗？此操作不可撤销。'),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -7780,8 +8544,52 @@ class _TrashPhotoScene extends StatelessWidget {
     if (!context.mounted) {
       return;
     }
-    onTrashEmptied();
+    widget.onTrashEmptied();
     showPrototypeMessage(context, '已清空回收站');
+  }
+
+  void _toggleSelectionMode() {
+    setState(() {
+      if (_isSelectionMode) {
+        _selectionMode = false;
+        _selectedEntryIds.clear();
+      } else {
+        _selectionMode = true;
+      }
+    });
+  }
+
+  void _toggleEntrySelection(TrashPhotoEntry entry) {
+    setState(() {
+      if (_selectedEntryIds.contains(entry.id)) {
+        _selectedEntryIds.remove(entry.id);
+      } else {
+        _selectedEntryIds.add(entry.id);
+      }
+    });
+  }
+
+  void _restoreSelected(BuildContext context) {
+    if (_selectedEntryIds.isEmpty) {
+      showPrototypeMessage(context, '请先选择要恢复的照片');
+      return;
+    }
+    final List<TrashPhotoEntry> selectedEntries = widget.entries.where((
+      TrashPhotoEntry entry,
+    ) {
+      return _selectedEntryIds.contains(entry.id);
+    }).toList();
+    if (selectedEntries.isEmpty) {
+      return;
+    }
+    for (final TrashPhotoEntry entry in selectedEntries) {
+      widget.onTrashPhotoRestored(entry);
+    }
+    setState(() {
+      _selectionMode = false;
+      _selectedEntryIds.clear();
+    });
+    showPrototypeMessage(context, '已批量恢复 ${selectedEntries.length} 张照片');
   }
 }
 
@@ -7789,10 +8597,18 @@ class _TrashPhotoSceneHeader extends StatelessWidget {
   const _TrashPhotoSceneHeader({
     required this.entryCount,
     required this.onEmptyPressed,
+    required this.onSelectionPressed,
+    required this.onRestoreSelectedPressed,
+    required this.selectionMode,
+    required this.selectedCount,
   });
 
   final int entryCount;
   final VoidCallback? onEmptyPressed;
+  final VoidCallback? onSelectionPressed;
+  final VoidCallback? onRestoreSelectedPressed;
+  final bool selectionMode;
+  final int selectedCount;
 
   @override
   Widget build(BuildContext context) {
@@ -7811,7 +8627,9 @@ class _TrashPhotoSceneHeader extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                entryCount == 0
+                selectedCount > 0
+                    ? '已选中 $selectedCount 张照片，可批量恢复。'
+                    : entryCount == 0
                     ? '删除的照片会暂存在这里。'
                     : '当前共 $entryCount 张照片，可恢复或彻底删除。',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -7821,6 +8639,20 @@ class _TrashPhotoSceneHeader extends StatelessWidget {
             ],
           ),
         ),
+        if (onSelectionPressed != null)
+          TextButton.icon(
+            onPressed: onSelectionPressed,
+            icon: Icon(
+              selectionMode ? Icons.deselect_rounded : Icons.select_all_rounded,
+            ),
+            label: Text(selectionMode ? '取消批量选中' : '批量选中'),
+          ),
+        if (onRestoreSelectedPressed != null)
+          TextButton.icon(
+            onPressed: selectionMode ? onRestoreSelectedPressed : null,
+            icon: const Icon(Icons.restore_page_rounded),
+            label: const Text('批量恢复'),
+          ),
         if (onEmptyPressed != null)
           TextButton.icon(
             onPressed: onEmptyPressed,
@@ -7840,11 +8672,17 @@ class _TrashPhotoGrid extends StatelessWidget {
     required this.entries,
     required this.onTrashPhotoRestored,
     required this.onTrashPhotoDeleted,
+    required this.selectionMode,
+    required this.selectedEntryIds,
+    required this.onSelectionChanged,
   });
 
   final List<TrashPhotoEntry> entries;
   final TrashRestoreCallback onTrashPhotoRestored;
   final ValueChanged<TrashPhotoEntry> onTrashPhotoDeleted;
+  final bool selectionMode;
+  final Set<String> selectedEntryIds;
+  final ValueChanged<TrashPhotoEntry> onSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -7892,6 +8730,9 @@ class _TrashPhotoGrid extends StatelessWidget {
                           width: itemWidth,
                           onTrashPhotoRestored: onTrashPhotoRestored,
                           onTrashPhotoDeleted: onTrashPhotoDeleted,
+                          selectionMode: selectionMode,
+                          selected: selectedEntryIds.contains(entry.id),
+                          onSelectionChanged: onSelectionChanged,
                         ),
                       );
                     }).toList(),
@@ -7919,12 +8760,18 @@ class _TrashPhotoTile extends StatelessWidget {
     required this.width,
     required this.onTrashPhotoRestored,
     required this.onTrashPhotoDeleted,
+    required this.selectionMode,
+    required this.selected,
+    required this.onSelectionChanged,
   });
 
   final TrashPhotoEntry entry;
   final double width;
   final TrashRestoreCallback onTrashPhotoRestored;
   final ValueChanged<TrashPhotoEntry> onTrashPhotoDeleted;
+  final bool selectionMode;
+  final bool selected;
+  final ValueChanged<TrashPhotoEntry> onSelectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -7935,6 +8782,10 @@ class _TrashPhotoTile extends StatelessWidget {
           photo: entry.photo,
           width: width,
           onTap: () {
+            if (selectionMode) {
+              onSelectionChanged(entry);
+              return;
+            }
             Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (BuildContext context) {
@@ -7947,9 +8798,12 @@ class _TrashPhotoTile extends StatelessWidget {
               ),
             );
           },
-          onLongPress: () {},
-          selectionMode: false,
-          selected: false,
+          onLongPress: () => onSelectionChanged(entry),
+          selectionMode: selectionMode,
+          selected: selected,
+          selectedBorderColor: const Color(0xFFFF3B30),
+          selectedBorderWidth: 2,
+          showSelectionCheckmark: false,
         ),
         const SizedBox(height: 8),
         Padding(
@@ -8003,12 +8857,8 @@ class _TrashPhotoTile extends StatelessWidget {
   }
 
   void _handleRestore(BuildContext context) {
-    final bool restored = onTrashPhotoRestored(entry);
-    if (!restored) {
-      showPrototypeMessage(context, '原相册已不存在，无法恢复这张照片。');
-      return;
-    }
-    showPrototypeMessage(context, '已恢复到“${entry.albumTitle}”');
+    final String restoredAlbumTitle = onTrashPhotoRestored(entry);
+    showPrototypeMessage(context, '已恢复到“$restoredAlbumTitle”');
   }
 
   Future<void> _handleDelete(BuildContext context) async {
@@ -8756,6 +9606,16 @@ class AlbumData {
     );
   }
 
+  AlbumData withInsertedPhotoAt(int index, PhotoData photo) {
+    final List<PhotoData> nextPhotos = List<PhotoData>.from(photos);
+    final int safeIndex = index.clamp(0, nextPhotos.length);
+    nextPhotos.insert(safeIndex, photo);
+    return copyWith(
+      photos: nextPhotos,
+      subtitle: _updatedSubtitle(nextPhotos.length),
+    );
+  }
+
   AlbumData withUpdatedPhoto(PhotoData photo) {
     final List<PhotoData> nextPhotos = photos.map((PhotoData item) {
       return item.id == photo.id ? photo : item;
@@ -8952,6 +9812,21 @@ class _AlbumEditorResult {
   final double coverOffsetX;
   final double coverOffsetY;
   final bool deleteAlbum;
+}
+
+class _AlbumTransferTarget {
+  const _AlbumTransferTarget._({
+    this.albumId,
+    this.createNew = false,
+  });
+
+  const _AlbumTransferTarget.existing(String albumId)
+    : this._(albumId: albumId);
+
+  const _AlbumTransferTarget.createNew() : this._(createNew: true);
+
+  final String? albumId;
+  final bool createNew;
 }
 
 class LocalImportSnapshot {

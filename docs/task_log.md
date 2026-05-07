@@ -1,5 +1,40 @@
 # Task Log
 
+## 2026-05-07
+
+### What Was Completed
+- Added album-detail multi-select actions for `删除`, `移动`, and `复制`.
+- Matched the album-detail selection interaction to the recycle bin pattern: icon+text `批量选中`, red border selection highlight, and no auto-exit when selection count returns to zero.
+- Reworked the target-album picker for move/copy into a compact square-corner dialog that only shows bordered album names and a trailing `新建列表` entry.
+- Restored the focused album cover pencil in single-album mode and changed it to pick a replacement cover from the current album's own photo thumbnails.
+- Split single-album editing into two separate paths:
+  - cover editing from the cover area
+  - inline text editing for album title and album description from the text side
+- Updated `WORKLOG.md`, `README.md`, and `docs/current_status.md` so the documentation matches the new focused-album and album-detail behavior.
+
+### Files Changed
+- `lib/main.dart`
+- `test/widget_test.dart`
+- `WORKLOG.md`
+- `README.md`
+- `docs/current_status.md`
+- `docs/task_log.md`
+
+### How To Verify
+- Run `flutter analyze --no-pub`
+- Run `flutter build windows`
+- Open the focused album mode on Windows
+- Click the cover pencil and confirm the dialog shows thumbnails from the current album
+- Click the text-side pencil and confirm album title / description can be edited inline
+- Open album detail, enter `批量选中`, deselect back to zero, and confirm selection mode remains active until manually cancelled
+
+### Current Problem
+- The home-page subwindow markers still have room for finer granularity if we want each cover / image-text region to be individually addressable.
+- The local untracked file `相册界面2.png` still has not been added to version control.
+
+### Next Suggestion
+- Continue with finer subwindow markers for focused album image and text regions after validating the new editing flow.
+
 ## 2026-05-06
 
 ### What Was Completed

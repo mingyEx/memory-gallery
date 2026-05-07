@@ -298,7 +298,9 @@ void main() {
       MaterialApp(
         home: AlbumDetailPage(
           album: album,
+          albums: <AlbumData>[album],
           onAlbumChanged: (_) {},
+          onAlbumsChanged: (_) {},
           onPhotosTrashed: (_) {},
         ),
       ),
@@ -363,9 +365,10 @@ void main() {
             albums: buildDemoAlbums(),
             recycleBin: const <TrashPhotoEntry>[],
             onAlbumChanged: (_) {},
+            onAlbumsChanged: (_) {},
             onAlbumDeleted: (_) {},
             onPhotosTrashed: (_) {},
-            onTrashPhotoRestored: (_) => true,
+            onTrashPhotoRestored: (_) => '测试相册',
             onTrashPhotoDeleted: (_) {},
             onTrashEmptied: () {},
             appearance: appearance,
@@ -417,6 +420,7 @@ void main() {
       albumId: sourceAlbum.id,
       albumTitle: sourceAlbum.title,
       photo: sourceAlbum.photos.first,
+      originalPhotoIndex: 0,
       deletedAt: '2026-05-05T10:00:00.000',
     );
     bool restored = false;
@@ -429,11 +433,12 @@ void main() {
             albums: buildDemoAlbums(),
             recycleBin: <TrashPhotoEntry>[entry],
             onAlbumChanged: (_) {},
+            onAlbumsChanged: (_) {},
             onAlbumDeleted: (_) {},
             onPhotosTrashed: (_) {},
             onTrashPhotoRestored: (TrashPhotoEntry restoredEntry) {
               restored = restoredEntry.id == entry.id;
-              return true;
+              return restoredEntry.albumTitle;
             },
             onTrashPhotoDeleted: (_) {},
             onTrashEmptied: () {},
@@ -471,6 +476,7 @@ void main() {
       albumId: sourceAlbum.id,
       albumTitle: sourceAlbum.title,
       photo: sourceAlbum.photos.first,
+      originalPhotoIndex: 0,
       deletedAt: '2026-05-05T10:00:00.000',
     );
     bool emptied = false;
@@ -483,9 +489,10 @@ void main() {
             albums: buildDemoAlbums(),
             recycleBin: <TrashPhotoEntry>[entry],
             onAlbumChanged: (_) {},
+            onAlbumsChanged: (_) {},
             onAlbumDeleted: (_) {},
             onPhotosTrashed: (_) {},
-            onTrashPhotoRestored: (_) => true,
+            onTrashPhotoRestored: (_) => '测试相册',
             onTrashPhotoDeleted: (_) {},
             onTrashEmptied: () {
               emptied = true;

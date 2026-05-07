@@ -1,32 +1,27 @@
 # Current Status
 
 ## Completed This Round
-- Refreshed the README so it matches the current product scope, cross-platform layout, detail-page behavior, and packaging outputs.
-- Clarified the Windows detail page behavior: default full-image fit, center-stable zoom, drag-to-pan, and the description-only editor entry in subwindow 4.
-- Kept Android-specific mobile layouts as top-image / bottom-text for focused album mode and photo detail.
-- Preserved the mobile bottom navigation for `相册 / 收藏 / 回收站` and the three-state `相册` cycle.
-- Kept the focused album cover floating directly over the background without the old white framed backing.
-- Updated the worklog to record the latest cross-platform state and editing entry behavior.
+- Unified album-detail multi-select with recycle-bin behavior: `批量选中`, red border selection state, explicit cancel, and no auto-exit when the selected count returns to zero.
+- Added album-detail batch actions for `删除`, `移动`, and `复制`, and tightened the target-album picker into a square-corner compact list with bordered album names plus `新建列表`.
+- Restored the focused album cover pencil in single-album mode so cover selection now comes from the current album's own photo thumbnails.
+- Split single-album editing into two independent entries: cover editing on the image, and inline album title / description editing on the text side.
+- Updated README and worklog so the repo description matches the current focused-album and album-detail interactions.
 
 ## Main Files Changed
 - `README.md`
 - `lib/main.dart`
 - `test/widget_test.dart`
-- `.gitignore`
 - `WORKLOG.md`
 - `docs/current_status.md`
-- `tool/windows_installer/album_app.iss`
+- `docs/task_log.md`
 
 ## Validation
 - `flutter analyze --no-pub`
-- `flutter test`
-- `flutter run -d windows`
-- `flutter run -d emulator-5554`
-- `adb shell am start -n com.example.album_app/.MainActivity`
+- `flutter build windows`
 
 ## Current Issues
 - The untracked image `相册界面2.png` is still present locally and has not been added to the repo.
-- Windows installer packaging still depends on the local Inno Setup compiler being available on this machine.
+- The finer-grained subwindow markers for each home cover / image-text region have not been extended yet beyond the current numbering scheme.
 
 ## Suggested Next Step
-- Build the Windows installer, commit the documentation updates, and push the branch to GitHub.
+- Validate the new focused-album cover picker and inline text editor in real usage, then continue refining subwindow markers if needed.
