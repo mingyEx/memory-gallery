@@ -7,6 +7,8 @@ import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart'
+    show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show KeyDownEvent, KeyEvent, LogicalKeyboardKey;
@@ -2629,6 +2631,9 @@ class _SectionMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!_showDebugSectionFrames) {
+      return const SizedBox.shrink();
+    }
     return IgnorePointer(
       child: Align(
         alignment: Alignment.topRight,
@@ -2659,7 +2664,7 @@ class _SectionMarker extends StatelessWidget {
   }
 }
 
-const bool _showDebugSectionFrames = true;
+const bool _showDebugSectionFrames = false;
 
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
@@ -5891,6 +5896,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
           _panOffset = nextOffset;
         });
       },
+      onZoomChanged: _applyDetailZoom,
       toolbar: _buildToolbar(),
       textPanel: _buildTextPanel(),
       textPanelVisible: !_textPanelCollapsed,
@@ -6085,19 +6091,21 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
         });
       },
       onZoomIn: () {
-        setState(() {
-          _zoom = (_zoom + 0.2).clamp(1.0, 2.0);
-        });
+        _applyDetailZoom((_zoom + 0.2).clamp(1.0, 2.0));
       },
       onZoomOut: () {
-        setState(() {
-          _zoom = (_zoom - 0.2).clamp(1.0, 2.0);
-          if (_zoom == 1) {
-            _panOffset = Offset.zero;
-          }
-        });
+        _applyDetailZoom((_zoom - 0.2).clamp(1.0, 2.0));
       },
     );
+  }
+
+  void _applyDetailZoom(double nextZoom) {
+    setState(() {
+      _zoom = nextZoom;
+      if (_zoom <= 1) {
+        _panOffset = Offset.zero;
+      }
+    });
   }
 
   Widget _buildTextPanel() {
@@ -6187,10 +6195,6 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     final String nextDateText = _dateController.text.trim();
     if (nextTitle.isEmpty) {
       showPrototypeMessage(context, '标题不能为空。');
-      return;
-    }
-    if (nextNote.isEmpty) {
-      showPrototypeMessage(context, '文字内容不能为空。');
       return;
     }
     final DateTime? parsedDate = parseChineseDate(nextDateText);
@@ -6398,6 +6402,7 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                     _panOffset = nextOffset;
                   });
                 },
+                onZoomChanged: _applyFullscreenZoom,
                 desktop: true,
                 backgroundColor: const Color(0xFF141414),
               ),
@@ -6441,12 +6446,7 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                       icon: Icons.remove_rounded,
                       label: '缩小',
                       onTap: () {
-                        setState(() {
-                          _zoom = (_zoom - 0.2).clamp(0.8, 2.0);
-                          if (_zoom <= 1) {
-                            _panOffset = Offset.zero;
-                          }
-                        });
+                        _applyFullscreenZoom((_zoom - 0.2).clamp(0.8, 2.0));
                       },
                     ),
                   ),
@@ -6456,9 +6456,7 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                       icon: Icons.add_rounded,
                       label: '放大',
                       onTap: () {
-                        setState(() {
-                          _zoom = (_zoom + 0.2).clamp(0.8, 2.0);
-                        });
+                        _applyFullscreenZoom((_zoom + 0.2).clamp(0.8, 2.0));
                       },
                     ),
                   ),
@@ -6482,6 +6480,15 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
       ),
     );
   }
+
+  void _applyFullscreenZoom(double nextZoom) {
+    setState(() {
+      _zoom = nextZoom;
+      if (_zoom <= 1) {
+        _panOffset = Offset.zero;
+      }
+    });
+  }
 }
 
 class _LandscapeDetailLayout extends StatelessWidget {
@@ -6491,6 +6498,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
     required this.turns,
     required this.panOffset,
     required this.onPanUpdate,
+    required this.onZoomChanged,
     required this.toolbar,
     required this.textPanel,
     required this.textPanelVisible,
@@ -6505,6 +6513,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
   final double turns;
   final Offset panOffset;
   final ValueChanged<Offset> onPanUpdate;
+  final ValueChanged<double> onZoomChanged;
   final Widget toolbar;
   final Widget textPanel;
   final bool textPanelVisible;
@@ -6533,6 +6542,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
                             turns: turns,
                             panOffset: panOffset,
                             onPanUpdate: onPanUpdate,
+                            onZoomChanged: onZoomChanged,
                             desktop: desktop,
                           ),
                         ),
@@ -6570,6 +6580,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
                     turns: turns,
                     panOffset: panOffset,
                     onPanUpdate: onPanUpdate,
+                    onZoomChanged: onZoomChanged,
                     desktop: desktop,
                   ),
                 ),
@@ -6605,6 +6616,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
                         turns: turns,
                         panOffset: panOffset,
                         onPanUpdate: onPanUpdate,
+                        onZoomChanged: onZoomChanged,
                         desktop: desktop,
                       ),
                     ),
@@ -6655,6 +6667,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
                       turns: turns,
                       panOffset: panOffset,
                       onPanUpdate: onPanUpdate,
+                      onZoomChanged: onZoomChanged,
                       desktop: desktop,
                     ),
                   ),
@@ -6780,6 +6793,7 @@ class _DetailImageFrame extends StatelessWidget {
     required this.turns,
     required this.panOffset,
     required this.onPanUpdate,
+    this.onZoomChanged,
     required this.desktop,
     this.backgroundColor = const Color(0xFFF0E6DA),
   });
@@ -6789,6 +6803,7 @@ class _DetailImageFrame extends StatelessWidget {
   final double turns;
   final Offset panOffset;
   final ValueChanged<Offset> onPanUpdate;
+  final ValueChanged<double>? onZoomChanged;
   final bool desktop;
   final Color backgroundColor;
 
@@ -6811,30 +6826,46 @@ class _DetailImageFrame extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(5),
-            child: GestureDetector(
-              onPanUpdate: zoom > 1
-                  ? (DragUpdateDetails details) {
-                      onPanUpdate(
-                        _clampPhotoPanOffset(
-                          viewportSize: viewportSize,
-                          photoAspectRatio: photoAspectRatio,
-                          zoom: zoom,
-                          panOffset: effectivePanOffset + details.delta,
+            child: Listener(
+              onPointerSignal: onZoomChanged == null
+                  ? null
+                  : (PointerSignalEvent event) {
+                      if (event is! PointerScrollEvent) {
+                        return;
+                      }
+                      final double nextZoom = (zoom +
+                              (event.scrollDelta.dy < 0 ? 0.12 : -0.12))
+                          .clamp(desktop ? 0.8 : 1.0, 2.0);
+                      if (nextZoom == zoom) {
+                        return;
+                      }
+                      onZoomChanged!(nextZoom);
+                    },
+              child: GestureDetector(
+                onPanUpdate: zoom > 1
+                    ? (DragUpdateDetails details) {
+                        onPanUpdate(
+                          _clampPhotoPanOffset(
+                            viewportSize: viewportSize,
+                            photoAspectRatio: photoAspectRatio,
+                            zoom: zoom,
+                            panOffset: effectivePanOffset + details.delta,
+                          ),
+                        );
+                      }
+                    : null,
+                child: SizedBox.expand(
+                  child: Transform.translate(
+                    offset: effectivePanOffset,
+                    child: Transform.rotate(
+                      angle: math.pi * 2 * turns,
+                      child: Transform.scale(
+                        alignment: Alignment.center,
+                        scale: zoom,
+                        child: PhotoVisual(
+                          photo: photo,
+                          fit: BoxFit.contain,
                         ),
-                      );
-                    }
-                  : null,
-              child: SizedBox.expand(
-                child: Transform.translate(
-                  offset: effectivePanOffset,
-                  child: Transform.rotate(
-                    angle: math.pi * 2 * turns,
-                    child: Transform.scale(
-                      alignment: Alignment.center,
-                      scale: zoom,
-                      child: PhotoVisual(
-                        photo: photo,
-                        fit: BoxFit.contain,
                       ),
                     ),
                   ),
@@ -7294,6 +7325,10 @@ class _DarkActionButton extends StatelessWidget {
         height: 48,
         decoration: BoxDecoration(
           color: const Color(0xFF262626),
+          border: Border.all(
+            color: const Color(0xFFFFF4E8).withValues(alpha: 0.72),
+            width: 1.4,
+          ),
           borderRadius: BorderRadius.circular(5),
         ),
         child: Center(

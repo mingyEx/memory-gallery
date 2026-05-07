@@ -10,7 +10,10 @@
 - Split single-album editing into two separate paths:
   - cover editing from the cover area
   - inline text editing for album title and album description from the text side
-- Updated `WORKLOG.md`, `README.md`, and `docs/current_status.md` so the documentation matches the new focused-album and album-detail behavior.
+- Hid the debug-only subwindow red frames and top-right number tags from the default UI.
+- Removed the photo-detail save warning for empty note text so blank notes can now be saved.
+- Added clearer light borders to fullscreen action buttons and enabled mouse-wheel zoom in both photo detail and fullscreen views.
+- Updated `WORKLOG.md`, `README.md`, and `docs/current_status.md` so the documentation matches the new focused-album, fullscreen, and album-detail behavior.
 
 ### Files Changed
 - `lib/main.dart`
@@ -27,13 +30,16 @@
 - Click the cover pencil and confirm the dialog shows thumbnails from the current album
 - Click the text-side pencil and confirm album title / description can be edited inline
 - Open album detail, enter `批量选中`, deselect back to zero, and confirm selection mode remains active until manually cancelled
+- Open photo detail and fullscreen mode, then use the mouse wheel to zoom
+- Confirm the fullscreen action buttons show visible light borders on the dark background
+- Confirm the old debug subwindow marks are no longer visible
 
 ### Current Problem
-- The home-page subwindow markers still have room for finer granularity if we want each cover / image-text region to be individually addressable.
 - The local untracked file `相册界面2.png` still has not been added to version control.
+- `flutter test` currently fails in a few widget tests that still expect older photo-detail layout and older album-editor entry points.
 
 ### Next Suggestion
-- Continue with finer subwindow markers for focused album image and text regions after validating the new editing flow.
+- Repair the outdated widget tests after validating the new fullscreen and focused-album interactions in real usage.
 
 ## 2026-05-06
 

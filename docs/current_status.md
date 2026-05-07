@@ -5,7 +5,10 @@
 - Added album-detail batch actions for `删除`, `移动`, and `复制`, and tightened the target-album picker into a square-corner compact list with bordered album names plus `新建列表`.
 - Restored the focused album cover pencil in single-album mode so cover selection now comes from the current album's own photo thumbnails.
 - Split single-album editing into two independent entries: cover editing on the image, and inline album title / description editing on the text side.
-- Updated README and worklog so the repo description matches the current focused-album and album-detail interactions.
+- Hid the debug-only red frames and top-right subwindow numbers behind the disabled debug switch.
+- Removed the photo-detail warning that blocked saving when the note text was empty.
+- Added more visible light borders to fullscreen action buttons and enabled mouse-wheel zoom for both photo detail and fullscreen image views.
+- Updated README and worklog so the repo description matches the current focused-album, fullscreen, and album-detail interactions.
 
 ## Main Files Changed
 - `README.md`
@@ -21,7 +24,7 @@
 
 ## Current Issues
 - The untracked image `相册界面2.png` is still present locally and has not been added to the repo.
-- The finer-grained subwindow markers for each home cover / image-text region have not been extended yet beyond the current numbering scheme.
+- `flutter test` is currently failing in existing widget tests that still assume older photo-detail layout behavior and older album-editor flows.
 
 ## Suggested Next Step
-- Validate the new focused-album cover picker and inline text editor in real usage, then continue refining subwindow markers if needed.
+- Validate the fullscreen button border and wheel-zoom behavior in real usage, then repair the outdated widget tests.
