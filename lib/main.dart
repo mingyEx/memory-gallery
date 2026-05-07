@@ -382,7 +382,7 @@ class LocalAlbumStore {
   }
 }
 
-enum PrototypeThemeStyle { warm, walnut, sage }
+enum PrototypeThemeStyle { warm, walnut, sage, githubSoft }
 
 enum HomeSection { albums, memories, favorites, trash, recent }
 
@@ -439,6 +439,8 @@ class PrototypePalette {
     required this.primary,
     required this.secondary,
     required this.ink,
+    required this.border,
+    required this.muted,
   });
 
   final Color background;
@@ -446,6 +448,59 @@ class PrototypePalette {
   final Color primary;
   final Color secondary;
   final Color ink;
+  final Color border;
+  final Color muted;
+}
+
+@immutable
+class PrototypeThemeTokens extends ThemeExtension<PrototypeThemeTokens> {
+  const PrototypeThemeTokens({
+    required this.background,
+    required this.surface,
+    required this.border,
+    required this.ink,
+    required this.muted,
+  });
+
+  final Color background;
+  final Color surface;
+  final Color border;
+  final Color ink;
+  final Color muted;
+
+  @override
+  PrototypeThemeTokens copyWith({
+    Color? background,
+    Color? surface,
+    Color? border,
+    Color? ink,
+    Color? muted,
+  }) {
+    return PrototypeThemeTokens(
+      background: background ?? this.background,
+      surface: surface ?? this.surface,
+      border: border ?? this.border,
+      ink: ink ?? this.ink,
+      muted: muted ?? this.muted,
+    );
+  }
+
+  @override
+  PrototypeThemeTokens lerp(
+    ThemeExtension<PrototypeThemeTokens>? other,
+    double t,
+  ) {
+    if (other is! PrototypeThemeTokens) {
+      return this;
+    }
+    return PrototypeThemeTokens(
+      background: Color.lerp(background, other.background, t) ?? background,
+      surface: Color.lerp(surface, other.surface, t) ?? surface,
+      border: Color.lerp(border, other.border, t) ?? border,
+      ink: Color.lerp(ink, other.ink, t) ?? ink,
+      muted: Color.lerp(muted, other.muted, t) ?? muted,
+    );
+  }
 }
 
 PrototypePalette paletteFor(PrototypeThemeStyle style, Brightness brightness) {
@@ -458,6 +513,8 @@ PrototypePalette paletteFor(PrototypeThemeStyle style, Brightness brightness) {
         primary: const Color(0xFF8E6847),
         secondary: const Color(0xFFC89A6A),
         ink: isDark ? const Color(0xFFF5EDE1) : const Color(0xFF5A3E2A),
+        border: isDark ? const Color(0xFF5B4738) : const Color(0xFFD6C6B5),
+        muted: isDark ? const Color(0xFFB9AB9B) : const Color(0xFF9E8E80),
       );
     case PrototypeThemeStyle.walnut:
       return PrototypePalette(
@@ -466,6 +523,8 @@ PrototypePalette paletteFor(PrototypeThemeStyle style, Brightness brightness) {
         primary: const Color(0xFF7D5548),
         secondary: const Color(0xFFC59C8D),
         ink: isDark ? const Color(0xFFF2E6E2) : const Color(0xFF4D342D),
+        border: isDark ? const Color(0xFF584545) : const Color(0xFFD6C6B5),
+        muted: isDark ? const Color(0xFFBBAAA5) : const Color(0xFF9E8E80),
       );
     case PrototypeThemeStyle.sage:
       return PrototypePalette(
@@ -474,6 +533,18 @@ PrototypePalette paletteFor(PrototypeThemeStyle style, Brightness brightness) {
         primary: const Color(0xFF647A56),
         secondary: const Color(0xFF9EB18A),
         ink: isDark ? const Color(0xFFEAF1E4) : const Color(0xFF3E4E35),
+        border: isDark ? const Color(0xFF485845) : const Color(0xFFD6C6B5),
+        muted: isDark ? const Color(0xFFB3C1AB) : const Color(0xFF8A9A7F),
+      );
+    case PrototypeThemeStyle.githubSoft:
+      return PrototypePalette(
+        background: isDark ? const Color(0xFF22272E) : const Color(0xFFF6F8FA),
+        surface: isDark ? const Color(0xFF2D333B) : const Color(0xFFFFFFFF),
+        primary: isDark ? const Color(0xFF539BF5) : const Color(0xFF0969DA),
+        secondary: isDark ? const Color(0xFF57AB5A) : const Color(0xFF1A7F37),
+        ink: isDark ? const Color(0xFFADBAC7) : const Color(0xFF24292F),
+        border: isDark ? const Color(0xFF444C56) : const Color(0xFFD0D7DE),
+        muted: isDark ? const Color(0xFF768390) : const Color(0xFF57606A),
       );
   }
 }
@@ -486,6 +557,8 @@ String themeStyleLabel(PrototypeThemeStyle style) {
       return '胡桃';
     case PrototypeThemeStyle.sage:
       return '鼠尾草';
+    case PrototypeThemeStyle.githubSoft:
+      return 'GitHub Soft Dark';
   }
 }
 
@@ -568,6 +641,47 @@ String homeSectionSubtitle(HomeSection section) {
     case HomeSection.recent:
       return '查看最近新建或更新过的相册';
   }
+}
+
+Color _prototypeTitleInk(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  final PrototypeThemeTokens? tokens =
+      theme.extension<PrototypeThemeTokens>();
+  return theme.brightness == Brightness.dark
+      ? (tokens?.ink ?? theme.colorScheme.onSurface).withValues(alpha: 0.96)
+      : const Color(0xFF4F3827);
+}
+
+Color _prototypeBodyInk(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  final PrototypeThemeTokens? tokens =
+      theme.extension<PrototypeThemeTokens>();
+  return theme.brightness == Brightness.dark
+      ? (tokens?.ink ?? theme.colorScheme.onSurface).withValues(alpha: 0.88)
+      : const Color(0xFF5E4A3A);
+}
+
+Color _prototypeMutedInk(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  final PrototypeThemeTokens? tokens =
+      theme.extension<PrototypeThemeTokens>();
+  return theme.brightness == Brightness.dark
+      ? (tokens?.muted ?? theme.colorScheme.onSurface).withValues(alpha: 0.96)
+      : const Color(0xFF8B7765);
+}
+
+Color _prototypePanelSurface(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  final PrototypeThemeTokens? tokens =
+      theme.extension<PrototypeThemeTokens>();
+  return tokens?.surface ?? theme.colorScheme.surface;
+}
+
+Color _prototypePanelBorder(BuildContext context) {
+  final ThemeData theme = Theme.of(context);
+  final PrototypeThemeTokens? tokens =
+      theme.extension<PrototypeThemeTokens>();
+  return tokens?.border ?? theme.dividerColor;
 }
 
 List<AlbumData> albumsForSection(List<AlbumData> albums, HomeSection section) {
@@ -860,6 +974,9 @@ Future<void> showPrototypeSettingsSheet(
   required DataActionCallback onClearBackgroundPressed,
 }) {
   final bool isDesktop = MediaQuery.of(context).size.width >= 900;
+  final ThemeData theme = Theme.of(context);
+  final PrototypeThemeTokens tokens = theme.extension<PrototypeThemeTokens>()!;
+  final bool isDark = theme.brightness == Brightness.dark;
   if (isDesktop) {
     return showDialog<void>(
       context: context,
@@ -874,14 +991,14 @@ Future<void> showPrototypeSettingsSheet(
             constraints: const BoxConstraints(maxWidth: 760, maxHeight: 680),
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFFFFFCF7),
+                color: tokens.surface.withValues(alpha: isDark ? 0.98 : 1),
                 borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: const Color(0xFFE6D9CC)),
-                boxShadow: const <BoxShadow>[
+                border: Border.all(color: tokens.border),
+                boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: Color(0x22000000),
+                    color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.13),
                     blurRadius: 28,
-                    offset: Offset(0, 20),
+                    offset: const Offset(0, 20),
                   ),
                 ],
               ),
@@ -897,7 +1014,7 @@ Future<void> showPrototypeSettingsSheet(
                             style: Theme.of(context).textTheme.headlineSmall
                                 ?.copyWith(
                                   fontWeight: FontWeight.w700,
-                                  color: const Color(0xFF3E2C20),
+                                  color: tokens.ink,
                                 ),
                           ),
                         ),
@@ -934,7 +1051,7 @@ Future<void> showPrototypeSettingsSheet(
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
-    backgroundColor: const Color(0xFFFFFCF7),
+    backgroundColor: tokens.surface.withValues(alpha: isDark ? 0.99 : 1),
     builder: (BuildContext context) {
       return SafeArea(
         child: SingleChildScrollView(
@@ -1233,6 +1350,15 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      extensions: <ThemeExtension<dynamic>>[
+        PrototypeThemeTokens(
+          background: palette.background,
+          surface: palette.surface,
+          border: palette.border,
+          ink: palette.ink,
+          muted: palette.muted,
+        ),
+      ],
       scaffoldBackgroundColor: palette.background,
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
@@ -1258,17 +1384,17 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         fillColor: palette.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(5),
-          borderSide: const BorderSide(color: Color(0xFFD6C6B5)),
+          borderSide: BorderSide(color: palette.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(5),
-          borderSide: const BorderSide(color: Color(0xFFD6C6B5)),
+          borderSide: BorderSide(color: palette.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(5),
           borderSide: BorderSide(color: palette.primary, width: 1.4),
         ),
-        hintStyle: const TextStyle(color: Color(0xFF9E8E80)),
+        hintStyle: TextStyle(color: palette.muted),
       ),
     );
   }
@@ -2664,7 +2790,7 @@ class _SectionMarker extends StatelessWidget {
   }
 }
 
-const bool _showDebugSectionFrames = false;
+const bool _showDebugSectionFrames = true;
 
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
@@ -2826,17 +2952,36 @@ class _DesktopSidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color sidebarColor = tokens.surface.withValues(alpha: isDark ? 0.90 : 0.82);
+    final Color sidebarBorder = tokens.border;
+    final Color buttonBase = isDark
+        ? Color.alphaBlend(tokens.border.withValues(alpha: 0.28), tokens.surface)
+        : const Color(0xFFF8F1E8);
+    final Color buttonSelected = isDark
+        ? colorScheme.primary.withValues(alpha: 0.18)
+        : const Color(0xFFF3E8DB);
+    final Color buttonAccent = isDark
+        ? colorScheme.primary.withValues(alpha: 0.26)
+        : const Color(0xFFECDCCB);
+    final Color iconColor = isDark ? tokens.ink.withValues(alpha: 0.92) : const Color(0xFF7A573A);
+    final Color mutedIconColor = isDark ? tokens.muted.withValues(alpha: 0.96) : const Color(0xFF8A6A4F);
+
     return Container(
       height: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
+        color: sidebarColor,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: const Color(0xFFE8DCCF)),
-        boxShadow: const <BoxShadow>[
+        border: Border.all(color: sidebarBorder),
+        boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Color(0x12000000),
+            color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.07),
             blurRadius: 18,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -2848,7 +2993,7 @@ class _DesktopSidebar extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: const Color(0xFF8E6847),
+                color: colorScheme.primary,
                 borderRadius: BorderRadius.circular(5),
               ),
               child: const Icon(
@@ -2863,8 +3008,8 @@ class _DesktopSidebar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
                 color: section == HomeSection.albums
-                    ? const Color(0xFFF3E8DB)
-                    : const Color(0xFFF8F1E8),
+                    ? buttonSelected
+                    : buttonBase,
                 borderRadius: BorderRadius.circular(5),
               ),
               child: IconButton(
@@ -2884,9 +3029,9 @@ class _DesktopSidebar extends StatelessWidget {
                 ),
                 icon: section == HomeSection.albums
                     ? _DesktopAlbumModeIcon(mode: desktopViewMode)
-                    : const Icon(
+                    : Icon(
                         Icons.photo_album_rounded,
-                        color: Color(0xFF7A573A),
+                        color: iconColor,
                         size: 22,
                       ),
                 tooltip: section == HomeSection.albums
@@ -2904,8 +3049,8 @@ class _DesktopSidebar extends StatelessWidget {
               style: IconButton.styleFrom(
                 minimumSize: const Size(48, 48),
                 backgroundColor: section == HomeSection.favorites
-                    ? const Color(0xFFF3E8DB)
-                    : const Color(0xFFF8F1E8),
+                    ? buttonSelected
+                    : buttonBase,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(5),
                 ),
@@ -2915,7 +3060,7 @@ class _DesktopSidebar extends StatelessWidget {
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
                 size: 22,
-                color: const Color(0xFF7A573A),
+                color: iconColor,
               ),
               tooltip: '收藏',
             ),
@@ -2926,8 +3071,8 @@ class _DesktopSidebar extends StatelessWidget {
               style: IconButton.styleFrom(
                 minimumSize: const Size(48, 48),
                 backgroundColor: searchActive
-                    ? const Color(0xFFECDCCB)
-                    : const Color(0xFFF8F1E8),
+                    ? buttonAccent
+                    : buttonBase,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(5),
                 ),
@@ -2936,8 +3081,8 @@ class _DesktopSidebar extends StatelessWidget {
                 Icons.search_rounded,
                 size: 22,
                 color: searchActive
-                    ? const Color(0xFF704A31)
-                    : const Color(0xFF8A6A4F),
+                    ? iconColor
+                    : mutedIconColor,
               ),
               tooltip: '搜索',
             ),
@@ -2946,15 +3091,15 @@ class _DesktopSidebar extends StatelessWidget {
               onPressed: onCreateAlbum,
               style: IconButton.styleFrom(
                 minimumSize: const Size(48, 48),
-                backgroundColor: const Color(0xFFF3E8DB),
+                backgroundColor: buttonSelected,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(5),
                 ),
               ),
-              icon: const Icon(
+              icon: Icon(
                 Icons.add_rounded,
                 size: 24,
-                color: Color(0xFF7A573A),
+                color: iconColor,
               ),
               tooltip: '创建相册',
             ),
@@ -2965,16 +3110,16 @@ class _DesktopSidebar extends StatelessWidget {
               style: IconButton.styleFrom(
                 minimumSize: const Size(44, 44),
                 backgroundColor: section == HomeSection.trash
-                    ? const Color(0xFFF3E8DB)
-                    : const Color(0xFFF8F1E8),
+                    ? buttonSelected
+                    : buttonBase,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(5),
                 ),
               ),
-              icon: const Icon(
+              icon: Icon(
                 Icons.delete_sweep_rounded,
                 size: 20,
-                color: Color(0xFF76553A),
+                color: iconColor,
               ),
               tooltip: '回收站',
             ),
@@ -2991,15 +3136,15 @@ class _DesktopSidebar extends StatelessWidget {
               ),
               style: IconButton.styleFrom(
                 minimumSize: const Size(44, 44),
-                backgroundColor: const Color(0xFFF8F1E8),
+                backgroundColor: buttonBase,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(5),
                 ),
               ),
-              icon: const Icon(
+              icon: Icon(
                 Icons.settings_outlined,
                 size: 20,
-                color: Color(0xFF76553A),
+                color: iconColor,
               ),
               tooltip: '设置',
             ),
@@ -3150,6 +3295,11 @@ class _ShelfScene extends StatelessWidget {
     final BorderRadius panelRadius = desktop
         ? BorderRadius.zero
         : BorderRadius.circular(5);
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
     if (section == HomeSection.favorites) {
       return _FavoritePhotoScene(
         entries: favoritePhotos,
@@ -3174,9 +3324,7 @@ class _ShelfScene extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final double sceneHeight = desktop
-            ? constraints.maxHeight * 0.94
-            : constraints.maxHeight;
+        final double sceneHeight = constraints.maxHeight;
         final bool showGrid = desktopViewMode == DesktopAlbumViewMode.grid;
         final bool showCompact = desktopViewMode == DesktopAlbumViewMode.compact;
         final bool hasCustomBackground =
@@ -3228,21 +3376,18 @@ class _ShelfScene extends StatelessWidget {
                                       end: Alignment.bottomCenter,
                                       colors: <Color>[
                                         desktop
-                                            ? const Color(0xFFE9D3BA)
+                                            ? tokens.surface
                                             : Color.alphaBlend(
-                                                Theme.of(
-                                                  context,
-                                                ).colorScheme.surface,
-                                                Theme.of(
-                                                  context,
-                                                ).scaffoldBackgroundColor,
+                                                colorScheme.surface,
+                                                theme.scaffoldBackgroundColor,
                                               ),
                                         desktop
-                                            ? const Color(0xFF9C6E46)
-                                            : Theme.of(context)
-                                                  .colorScheme
-                                                  .secondary
-                                                  .withValues(alpha: 0.22),
+                                            ? Color.lerp(
+                                                tokens.surface,
+                                                colorScheme.secondary,
+                                                isDark ? 0.12 : 0.18,
+                                              )!
+                                            : colorScheme.secondary.withValues(alpha: 0.22),
                                       ],
                                     ),
                                   ),
@@ -3317,6 +3462,7 @@ class _ShelfScene extends StatelessWidget {
                         ),
                         child: _DesktopAlbumSpineWall(
                           albums: albums,
+                          desktop: desktop,
                           onAlbumTap: (AlbumData album) {
                             Navigator.of(context).push(
                               MaterialPageRoute<void>(
@@ -3367,32 +3513,24 @@ class _ShelfScene extends StatelessWidget {
                                     .round()
                                     .clamp(0, albums.length - 1);
                                 final AlbumData album = albums[currentIndex];
-                                return Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    34,
-                                    26,
-                                    34,
-                                    18,
-                                  ),
-                                  child: _DesktopFocusedAlbumStage(
-                                    album: album,
-                                    onAlbumChanged: onAlbumChanged,
-                                    onTap: () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (BuildContext context) {
-                                            return AlbumDetailPage(
-                                              album: album,
-                                              albums: albums,
-                                              onAlbumChanged: onAlbumChanged,
-                                              onAlbumsChanged: onAlbumsChanged,
-                                              onPhotosTrashed: onPhotosTrashed,
-                                            );
-                                          },
-                                        ),
-                                      );
-                                    },
-                                  ),
+                                return _DesktopFocusedAlbumStage(
+                                  album: album,
+                                  onAlbumChanged: onAlbumChanged,
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (BuildContext context) {
+                                          return AlbumDetailPage(
+                                            album: album,
+                                            albums: albums,
+                                            onAlbumChanged: onAlbumChanged,
+                                            onAlbumsChanged: onAlbumsChanged,
+                                            onPhotosTrashed: onPhotosTrashed,
+                                          );
+                                        },
+                                      ),
+                                    );
+                                  },
                                 );
                               },
                             )
@@ -4327,6 +4465,7 @@ class _DesktopAlbumSpineWall extends StatefulWidget {
     required this.onAlbumEdit,
     required this.onAlbumDelete,
     required this.onCreateAlbum,
+    required this.desktop,
   });
 
   final List<AlbumData> albums;
@@ -4334,6 +4473,7 @@ class _DesktopAlbumSpineWall extends StatefulWidget {
   final ValueChanged<AlbumData> onAlbumEdit;
   final ValueChanged<AlbumData> onAlbumDelete;
   final VoidCallback onCreateAlbum;
+  final bool desktop;
 
   @override
   State<_DesktopAlbumSpineWall> createState() => _DesktopAlbumSpineWallState();
@@ -4344,7 +4484,8 @@ class _DesktopAlbumSpineWallState extends State<_DesktopAlbumSpineWall> {
 
   double _spineWidthFor(AlbumData album) {
     final int seed = album.id.hashCode.abs();
-    return (100 + (seed % 51).toDouble()) * 0.75;
+    final double width = (100 + (seed % 51).toDouble()) * 0.75;
+    return widget.desktop ? width : width * 0.5;
   }
 
   double _spineHeightFor(AlbumData album, double availableHeight) {
@@ -4428,7 +4569,7 @@ class _DesktopAlbumSpineWallState extends State<_DesktopAlbumSpineWall> {
                           ),
                         ),
                         child: _DesktopAddAlbumSpineCard(
-                          width: 100,
+                          width: widget.desktop ? 100 : 50,
                           height: 240,
                           onTap: widget.onCreateAlbum,
                         ),
@@ -4712,8 +4853,11 @@ class AlbumDetailPage extends StatefulWidget {
 
 class _AlbumDetailPageState extends State<AlbumDetailPage> {
   late AlbumData _album;
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
   bool _isSelectionMode = false;
   bool _isImportingPhotos = false;
+  bool _isEditingAlbumText = false;
   final Set<String> _selectedPhotoIds = <String>{};
 
   List<PhotoData> get _selectedPhotos {
@@ -4726,6 +4870,15 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   void initState() {
     super.initState();
     _album = widget.album;
+    _titleController = TextEditingController(text: _album.title);
+    _descriptionController = TextEditingController(text: _album.description);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
   }
 
   @override
@@ -4761,18 +4914,20 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
             : null,
         title: _isSelectionMode
             ? Text('已选择 ${_selectedPhotoIds.length} 张')
-            : Column(
+            : isDesktop
+            ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(_album.title),
                   Text(
                     _album.subtitle,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF8B7765),
+                      color: _prototypeMutedInk(context),
                     ),
                   ),
                 ],
-              ),
+              )
+            : null,
         actions: <Widget>[
           if (!_isSelectionMode)
             TextButton.icon(
@@ -4860,21 +5015,24 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
             children: <Widget>[
               Stack(
                 children: <Widget>[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text(
-                      _album.description,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF6F5A49),
-                        height: 1.55,
-                      ),
-                    ),
-                  ),
+                  isDesktop
+                      ? Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            _album.description,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: _prototypeBodyInk(context),
+                                  height: 1.55,
+                                ),
+                          ),
+                        )
+                      : _buildMobileAlbumHeader(context),
                   Positioned.fill(
                     child: IgnorePointer(
                       child: DecoratedBox(
@@ -5019,11 +5177,116 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   void _replaceAlbum(AlbumData album) {
     setState(() {
       _album = album;
+      if (!_isEditingAlbumText) {
+        _titleController.text = album.title;
+        _descriptionController.text = album.description;
+      }
       _selectedPhotoIds.removeWhere((String id) {
         return !_album.photos.any((PhotoData photo) => photo.id == id);
       });
     });
     widget.onAlbumChanged(album);
+  }
+
+  void _startEditingAlbumText() {
+    setState(() {
+      _isEditingAlbumText = true;
+      _titleController.text = _album.title;
+      _descriptionController.text = _album.description;
+    });
+  }
+
+  void _cancelEditingAlbumText() {
+    setState(() {
+      _isEditingAlbumText = false;
+      _titleController.text = _album.title;
+      _descriptionController.text = _album.description;
+    });
+  }
+
+  void _saveEditingAlbumText() {
+    final AlbumData updatedAlbum = _album.copyWith(
+      title: _titleController.text.trim().isEmpty
+          ? _album.title
+          : _titleController.text.trim(),
+      description: _descriptionController.text.trim(),
+    );
+    setState(() {
+      _album = updatedAlbum;
+      _isEditingAlbumText = false;
+      _titleController.text = updatedAlbum.title;
+      _descriptionController.text = updatedAlbum.description;
+    });
+    widget.onAlbumChanged(updatedAlbum);
+  }
+
+  Future<void> _pickAlbumCover() async {
+    final String? coverPhotoId = await _ShelfScene._showAlbumCoverPickerDialog(
+      context,
+      _album,
+    );
+    if (!mounted || coverPhotoId == null) {
+      return;
+    }
+    final AlbumData updatedAlbum = _album.copyWith(coverPhotoId: coverPhotoId);
+    setState(() {
+      _album = updatedAlbum;
+    });
+    widget.onAlbumChanged(updatedAlbum);
+  }
+
+  Widget _buildMobileAlbumHeader(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color stageColor = tokens.surface.withValues(alpha: isDark ? 0.95 : 0.93);
+    final Color borderColor = tokens.border;
+    final Color shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.22)
+        : const Color(0x12000000);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: stageColor,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: borderColor),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: shadowColor,
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 190,
+            child: _AlbumTextEditorPane(
+              album: _album,
+              compact: true,
+              isEditing: _isEditingAlbumText,
+              titleController: _titleController,
+              descriptionController: _descriptionController,
+              onStartEditing: _startEditingAlbumText,
+              onCancel: _cancelEditingAlbumText,
+              onSave: _saveEditingAlbumText,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton.filledTonal(
+              tooltip: '编辑封面',
+              onPressed: _pickAlbumCover,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _startSelection(PhotoData photo) {
@@ -5258,7 +5521,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return Dialog(
-          backgroundColor: Theme.of(dialogContext).colorScheme.surface,
+          backgroundColor: _prototypePanelSurface(dialogContext),
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
           child: SizedBox(
             width: 360,
@@ -5271,7 +5534,10 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                   Text(
                     copyOnly ? '复制到其他相册' : '移动到其他相册',
                     style: Theme.of(dialogContext).textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                        ?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: _prototypeTitleInk(dialogContext),
+                        ),
                   ),
                   const SizedBox(height: 12),
                   Flexible(
@@ -5294,7 +5560,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                                 ),
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: const Color(0xFFBDA58C),
+                                    color: _prototypePanelBorder(dialogContext),
                                   ),
                                 ),
                                 child: Text(
@@ -5305,7 +5571,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                                       .textTheme
                                       .bodyMedium
                                       ?.copyWith(
-                                        color: const Color(0xFF4F3827),
+                                        color: _prototypeTitleInk(dialogContext),
                                         fontWeight: FontWeight.w600,
                                       ),
                                 ),
@@ -5325,12 +5591,16 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                             ),
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: const Color(0xFFBDA58C),
+                                color: _prototypePanelBorder(dialogContext),
                               ),
                             ),
                             child: Row(
                               children: <Widget>[
-                                const Icon(Icons.add_rounded, size: 18),
+                                Icon(
+                                  Icons.add_rounded,
+                                  size: 18,
+                                  color: _prototypeTitleInk(dialogContext),
+                                ),
                                 const SizedBox(width: 8),
                                 Text(
                                   '新建列表',
@@ -5338,7 +5608,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                                       .textTheme
                                       .bodyMedium
                                       ?.copyWith(
-                                        color: const Color(0xFF4F3827),
+                                        color: _prototypeTitleInk(dialogContext),
                                         fontWeight: FontWeight.w600,
                                       ),
                                 ),
@@ -5580,9 +5850,9 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
   Widget _buildPreviewCard(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF7),
+        color: _prototypePanelSurface(context),
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFFE3D7C8)),
+        border: Border.all(color: _prototypePanelBorder(context)),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x11000000),
@@ -5598,8 +5868,8 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
           children: <Widget>[
             Text(
               '图片占位区',
-              style: ThemeData.light().textTheme.titleLarge?.copyWith(
-                color: const Color(0xFF4F3827),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: _prototypeTitleInk(context),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -5696,9 +5966,9 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
   Widget _buildFormCard(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF7),
+        color: _prototypePanelSurface(context),
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFFE3D7C8)),
+        border: Border.all(color: _prototypePanelBorder(context)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -5708,7 +5978,7 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
             Text(
               '备注 / 感想',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: const Color(0xFF4F3827),
+                color: _prototypeTitleInk(context),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -5730,17 +6000,27 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
             const SizedBox(height: 14),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xFFF9F3EB),
+                color: _prototypePanelSurface(context),
                 borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: const Color(0xFFE2D5C7)),
+                border: Border.all(color: _prototypePanelBorder(context)),
               ),
               child: ListTile(
-                leading: const Icon(Icons.image_outlined),
-                title: const Text('选择照片'),
+                leading: Icon(
+                  Icons.image_outlined,
+                  color: _prototypeTitleInk(context),
+                ),
+                title: Text(
+                  '选择照片',
+                  style: TextStyle(color: _prototypeTitleInk(context)),
+                ),
                 subtitle: Text(
                   _selectedImage == null ? '从本地选择一张图片' : _selectedImage!.name,
+                  style: TextStyle(color: _prototypeMutedInk(context)),
                 ),
-                trailing: const Icon(Icons.chevron_right_rounded),
+                trailing: Icon(
+                  Icons.chevron_right_rounded,
+                  color: _prototypeMutedInk(context),
+                ),
                 onTap: _isSaving ? null : () => _pickImage(context),
               ),
             ),
@@ -5886,6 +6166,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   @override
   Widget build(BuildContext context) {
     final bool isDesktop = MediaQuery.of(context).size.width >= 900;
+    final PrototypeThemeTokens? tokens =
+        Theme.of(context).extension<PrototypeThemeTokens>();
     final Widget detailContent = _LandscapeDetailLayout(
       photo: photo,
       zoom: _zoom,
@@ -5993,12 +6275,18 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                         children: <Widget>[
                           DecoratedBox(
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFFCF7),
+                              color:
+                                  tokens?.surface ??
+                                  Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(5),
-                              border: Border.all(color: const Color(0xFFE3D7C8)),
-                              boxShadow: const <BoxShadow>[
+                              border: Border.all(
+                                color:
+                                    tokens?.border ??
+                                    Theme.of(context).dividerColor,
+                              ),
+                              boxShadow: <BoxShadow>[
                                 BoxShadow(
-                                  color: Color(0x11000000),
+                                  color: Colors.black.withValues(alpha: 0.10),
                                   blurRadius: 18,
                                   offset: Offset(0, 10),
                                 ),
@@ -6795,7 +7083,7 @@ class _DetailImageFrame extends StatelessWidget {
     required this.onPanUpdate,
     this.onZoomChanged,
     required this.desktop,
-    this.backgroundColor = const Color(0xFFF0E6DA),
+    this.backgroundColor,
   });
 
   final PhotoData photo;
@@ -6805,12 +7093,14 @@ class _DetailImageFrame extends StatelessWidget {
   final ValueChanged<Offset> onPanUpdate;
   final ValueChanged<double>? onZoomChanged;
   final bool desktop;
-  final Color backgroundColor;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
+        final PrototypeThemeTokens? tokens =
+            Theme.of(context).extension<PrototypeThemeTokens>();
         final Size viewportSize = constraints.biggest;
         final double photoAspectRatio = _viewerPhotoAspectRatio(photo, turns);
         final Offset effectivePanOffset = _clampPhotoPanOffset(
@@ -6821,7 +7111,9 @@ class _DetailImageFrame extends StatelessWidget {
         );
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: backgroundColor,
+            color:
+                backgroundColor ??
+                (tokens?.background ?? Theme.of(context).colorScheme.surface),
             borderRadius: BorderRadius.circular(5),
           ),
           child: ClipRRect(
@@ -6912,11 +7204,28 @@ class _PhotoTextPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color panelColor = tokens.surface.withValues(alpha: isDark ? 0.96 : 0.92);
+    final Color strongText = tokens.ink;
+    final Color bodyText = isDark
+        ? tokens.ink.withValues(alpha: 0.88)
+        : const Color(0xFF5C4837);
+    final Color mutedText = isDark
+        ? tokens.muted.withValues(alpha: 0.96)
+        : const Color(0xFF8D7968);
+    final Color codeBlockColor = isDark
+        ? Color.alphaBlend(colorScheme.primary.withValues(alpha: 0.10), tokens.surface)
+        : const Color(0xFFF4EADF);
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFDF9F3),
+        color: panelColor,
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFFE8D9C8)),
+        border: Border.all(color: tokens.border),
       ),
       child: Padding(
         padding: EdgeInsets.all(compact ? 22 : 18),
@@ -6959,7 +7268,7 @@ class _PhotoTextPanel extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w700,
-                                color: const Color(0xFF38291D),
+                                color: strongText,
                               ),
                         )
                       : Text(
@@ -6967,7 +7276,7 @@ class _PhotoTextPanel extends StatelessWidget {
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(
                                 fontWeight: FontWeight.w700,
-                                color: const Color(0xFF38291D),
+                                color: strongText,
                               ),
                         ),
                 ),
@@ -7017,7 +7326,7 @@ class _PhotoTextPanel extends StatelessWidget {
                         ),
                       ),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF6A5544),
+                        color: bodyText,
                       ),
                     ),
                   ),
@@ -7033,7 +7342,7 @@ class _PhotoTextPanel extends StatelessWidget {
               Text(
                 photo.date,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF8D7968),
+                  color: mutedText,
                 ),
               ),
             const SizedBox(height: 10),
@@ -7082,7 +7391,7 @@ class _PhotoTextPanel extends StatelessWidget {
                                 ?.copyWith(
                                   fontSize: noteFontSize,
                                   height: 1.7,
-                                  color: const Color(0xFF5C4837),
+                                  color: bodyText,
                                 ),
                           ),
                         ),
@@ -7118,48 +7427,48 @@ class _PhotoTextPanel extends StatelessWidget {
                           p: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             fontSize: noteFontSize,
                             height: 1.7,
-                            color: const Color(0xFF5C4837),
+                            color: bodyText,
                           ),
                           h1: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(
-                                color: const Color(0xFF38291D),
+                                color: strongText,
                                 fontWeight: FontWeight.w700,
                               ),
                           h2: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: const Color(0xFF38291D),
+                            color: strongText,
                             fontWeight: FontWeight.w700,
                           ),
                           h3: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(
-                                color: const Color(0xFF38291D),
+                                color: strongText,
                                 fontWeight: FontWeight.w700,
                               ),
                           strong: Theme.of(context).textTheme.bodyLarge
                               ?.copyWith(
                                 fontSize: noteFontSize,
                                 height: 1.7,
-                                color: const Color(0xFF3E2F24),
+                                color: strongText,
                                 fontWeight: FontWeight.w700,
                               ),
                           em: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             fontSize: noteFontSize,
                             height: 1.7,
-                            color: const Color(0xFF5C4837),
+                            color: bodyText,
                             fontStyle: FontStyle.italic,
                           ),
                           blockquote: Theme.of(context).textTheme.bodyLarge
                               ?.copyWith(
                                 fontSize: noteFontSize,
                                 height: 1.7,
-                                color: const Color(0xFF6F5A49),
+                                color: mutedText,
                               ),
                           code: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
                                 fontSize: noteFontSize - 1,
-                                color: const Color(0xFF5A4231),
+                                color: strongText,
                               ),
                           codeblockDecoration: BoxDecoration(
-                            color: const Color(0xFFF4EADF),
+                            color: codeBlockColor,
                             borderRadius: BorderRadius.circular(5),
                           ),
                           blockSpacing: 14,
@@ -7276,11 +7585,31 @@ class _ToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final PrototypeThemeTokens? tokens =
+        theme.extension<PrototypeThemeTokens>();
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color fillColor = isDark
+        ? Color.alphaBlend(
+            colorScheme.primary.withValues(alpha: 0.08),
+            tokens?.surface ?? colorScheme.surface,
+          )
+        : const Color(0xFFF7EFE4);
+    final Color borderColor = isDark
+        ? (tokens?.border ?? colorScheme.outline).withValues(alpha: 0.82)
+        : const Color(0xFFE2C9B1);
+    final Color iconColor = isDark
+        ? (tokens?.muted ?? colorScheme.onSurface).withValues(alpha: 0.94)
+        : const Color(0xFF6E4E35);
+    final Color disabledIconColor = isDark
+        ? (tokens?.muted ?? colorScheme.onSurface).withValues(alpha: 0.42)
+        : const Color(0xFFBEAA96);
     final Widget button = DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFF7EFE4),
+        color: fillColor,
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFFE2C9B1)),
+        border: Border.all(color: borderColor),
       ),
       child: TextButton(
         onPressed: enabled ? onTap : null,
@@ -7293,7 +7622,7 @@ class _ToolButton extends StatelessWidget {
         ),
         child: Icon(
           icon,
-          color: enabled ? const Color(0xFF6E4E35) : const Color(0xFFBEAA96),
+          color: enabled ? iconColor : disabledIconColor,
         ),
       ),
     );
@@ -7317,6 +7646,23 @@ class _DarkActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final PrototypeThemeTokens? tokens =
+        theme.extension<PrototypeThemeTokens>();
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color fillColor = isDark
+        ? Color.alphaBlend(
+            colorScheme.primary.withValues(alpha: 0.10),
+            tokens?.surface ?? const Color(0xFF262626),
+          )
+        : const Color(0xFF262626);
+    final Color borderColor = isDark
+        ? (tokens?.border ?? colorScheme.outline).withValues(alpha: 0.72)
+        : const Color(0xFFFFF4E8).withValues(alpha: 0.72);
+    final Color iconColor = isDark
+        ? (tokens?.muted ?? colorScheme.onSurface).withValues(alpha: 0.96)
+        : Colors.white;
     final Widget button = InkWell(
       borderRadius: BorderRadius.circular(5),
       onTap: onTap,
@@ -7324,15 +7670,15 @@ class _DarkActionButton extends StatelessWidget {
         width: 52,
         height: 48,
         decoration: BoxDecoration(
-          color: const Color(0xFF262626),
+          color: fillColor,
           border: Border.all(
-            color: const Color(0xFFFFF4E8).withValues(alpha: 0.72),
+            color: borderColor,
             width: 1.4,
           ),
           borderRadius: BorderRadius.circular(5),
         ),
         child: Center(
-          child: Icon(icon, color: Colors.white, size: 18),
+          child: Icon(icon, color: iconColor, size: 18),
         ),
       ),
     );
@@ -7494,6 +7840,22 @@ class _AlbumTextEditorPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colorScheme = theme.colorScheme;
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color titleColor = tokens.ink;
+    final Color subtitleColor = isDark
+        ? tokens.muted.withValues(alpha: 0.96)
+        : const Color(0xFF8A7767);
+    final Color bodyColor = isDark
+        ? tokens.ink.withValues(alpha: 0.88)
+        : const Color(0xFF5E4A3A);
+    final Color dividerColor = isDark
+        ? colorScheme.secondary.withValues(alpha: 0.80)
+        : const Color(0xFFC89A6A);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -7510,14 +7872,14 @@ class _AlbumTextEditorPane extends StatelessWidget {
                         border: OutlineInputBorder(),
                       ),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: const Color(0xFF4A3424),
+                        color: titleColor,
                         fontWeight: FontWeight.w700,
                       ),
                     )
                   : Text(
                       album.title,
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: const Color(0xFF4A3424),
+                        color: titleColor,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -7547,14 +7909,14 @@ class _AlbumTextEditorPane extends StatelessWidget {
         Text(
           album.subtitle,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: const Color(0xFF8A7767),
+            color: subtitleColor,
           ),
         ),
         const SizedBox(height: 14),
         Container(
           width: 42,
           height: 2,
-          color: const Color(0xFFC89A6A),
+          color: dividerColor,
         ),
         const SizedBox(height: 14),
         Expanded(
@@ -7570,7 +7932,7 @@ class _AlbumTextEditorPane extends StatelessWidget {
                     contentPadding: EdgeInsets.all(12),
                   ),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF5E4A3A),
+                    color: bodyColor,
                     height: compact ? 1.65 : 1.8,
                   ),
                 )
@@ -7580,7 +7942,7 @@ class _AlbumTextEditorPane extends StatelessWidget {
                         ? '这个相册还没有描述。'
                         : album.description,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF5E4A3A),
+                      color: bodyColor,
                       height: compact ? 1.75 : 1.85,
                     ),
                   ),
@@ -7680,6 +8042,21 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
   @override
   Widget build(BuildContext context) {
     final AlbumData album = widget.album;
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color stageColor = tokens.surface.withValues(alpha: isDark ? 0.96 : 0.94);
+    final Color shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.30)
+        : const Color(0x18000000);
+    final Color coverShadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.42)
+        : const Color(0x33000000);
+    final Color coverSubtitleColor = isDark
+        ? tokens.muted.withValues(alpha: 0.96)
+        : const Color(0xFFF4E8D7);
+
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         return FittedBox(
@@ -7691,14 +8068,14 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
             child: DecoratedBox(
               key: const ValueKey<String>('mobile-focused-album-stage'),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFFCF7).withValues(alpha: 0.94),
+                color: stageColor,
                 borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: const Color(0xFFE6D9CC)),
-                boxShadow: const <BoxShadow>[
+                border: Border.all(color: tokens.border),
+                boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: Color(0x18000000),
+                    color: shadowColor,
                     blurRadius: 22,
-                    offset: Offset(0, 14),
+                    offset: const Offset(0, 14),
                   ),
                 ],
               ),
@@ -7720,11 +8097,11 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
                           child: DecoratedBox(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(5),
-                              boxShadow: const <BoxShadow>[
+                              boxShadow: <BoxShadow>[
                                 BoxShadow(
-                                  color: Color(0x33000000),
+                                  color: coverShadowColor,
                                   blurRadius: 24,
-                                  offset: Offset(0, 18),
+                                  offset: const Offset(0, 18),
                                 ),
                               ],
                             ),
@@ -7758,8 +8135,8 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
                                             end: Alignment.bottomCenter,
                                             colors: <Color>[
                                               Colors.transparent,
-                                              const Color(0x22000000),
-                                              const Color(0xAA1E140F),
+                                              Colors.black.withValues(alpha: isDark ? 0.16 : 0.12),
+                                              Colors.black.withValues(alpha: isDark ? 0.72 : 0.66),
                                             ],
                                           ),
                                         ),
@@ -7788,8 +8165,10 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
                                               album.title,
                                               maxLines: 2,
                                               overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                color: Colors.white,
+                                              style: TextStyle(
+                                                color: isDark
+                                                    ? tokens.ink.withValues(alpha: 0.98)
+                                                    : Colors.white,
                                                 fontWeight: FontWeight.w700,
                                                 fontSize: 24,
                                               ),
@@ -7797,8 +8176,8 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
                                             const SizedBox(height: 8),
                                             Text(
                                               album.subtitle,
-                                              style: const TextStyle(
-                                                color: Color(0xFFF4E8D7),
+                                              style: TextStyle(
+                                                color: coverSubtitleColor,
                                                 fontSize: 13,
                                               ),
                                             ),
@@ -7936,16 +8315,31 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
   @override
   Widget build(BuildContext context) {
     final AlbumData album = widget.album;
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color stageColor = tokens.surface.withValues(alpha: isDark ? 0.95 : 0.90);
+    final Color shadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.30)
+        : const Color(0x18000000);
+    final Color coverShadowColor = isDark
+        ? Colors.black.withValues(alpha: 0.42)
+        : const Color(0x33000000);
+    final Color coverSubtitleColor = isDark
+        ? tokens.muted.withValues(alpha: 0.96)
+        : const Color(0xFFF4E8D7);
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFCF7).withValues(alpha: 0.90),
+        color: stageColor,
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: const Color(0xFFE6D9CC)),
-        boxShadow: const <BoxShadow>[
+        border: Border.all(color: tokens.border),
+        boxShadow: <BoxShadow>[
           BoxShadow(
-            color: Color(0x18000000),
+            color: shadowColor,
             blurRadius: 22,
-            offset: Offset(0, 14),
+            offset: const Offset(0, 14),
           ),
         ],
       ),
@@ -7962,11 +8356,11 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(5),
-                      boxShadow: const <BoxShadow>[
+                      boxShadow: <BoxShadow>[
                         BoxShadow(
-                          color: Color(0x33000000),
+                          color: coverShadowColor,
                           blurRadius: 24,
-                          offset: Offset(0, 18),
+                          offset: const Offset(0, 18),
                         ),
                       ],
                     ),
@@ -7999,8 +8393,8 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
                                     end: Alignment.bottomCenter,
                                     colors: <Color>[
                                       Colors.transparent,
-                                      const Color(0x22000000),
-                                      const Color(0xAA1E140F),
+                                      Colors.black.withValues(alpha: isDark ? 0.16 : 0.12),
+                                      Colors.black.withValues(alpha: isDark ? 0.72 : 0.66),
                                     ],
                                   ),
                                 ),
@@ -8028,8 +8422,10 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
                                       album.title,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: isDark
+                                            ? tokens.ink.withValues(alpha: 0.98)
+                                            : Colors.white,
                                         fontWeight: FontWeight.w700,
                                         fontSize: 28,
                                       ),
@@ -8037,8 +8433,8 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
                                     const SizedBox(height: 8),
                                     Text(
                                       album.subtitle,
-                                      style: const TextStyle(
-                                        color: Color(0xFFF4E8D7),
+                                      style: TextStyle(
+                                        color: coverSubtitleColor,
                                         fontSize: 14,
                                       ),
                                     ),
@@ -8340,7 +8736,7 @@ class _FavoritePhotoTile extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: const Color(0xFF4F3827),
+                  color: _prototypeTitleInk(context),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -8351,7 +8747,7 @@ class _FavoritePhotoTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF8B7765)),
+                ).textTheme.bodySmall?.copyWith(color: _prototypeMutedInk(context)),
               ),
             ],
           ),
@@ -8656,7 +9052,7 @@ class _TrashPhotoSceneHeader extends StatelessWidget {
               Text(
                 '回收站',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: const Color(0xFF4F3827),
+                  color: _prototypeTitleInk(context),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -8668,7 +9064,7 @@ class _TrashPhotoSceneHeader extends StatelessWidget {
                     ? '删除的照片会暂存在这里。'
                     : '当前共 $entryCount 张照片，可恢复或彻底删除。',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF8B7765),
+                  color: _prototypeMutedInk(context),
                 ),
               ),
             ],
@@ -8851,7 +9247,7 @@ class _TrashPhotoTile extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: const Color(0xFF4F3827),
+                  color: _prototypeTitleInk(context),
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -8862,7 +9258,7 @@ class _TrashPhotoTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF8B7765)),
+                ).textTheme.bodySmall?.copyWith(color: _prototypeMutedInk(context)),
               ),
               const SizedBox(height: 10),
               Wrap(

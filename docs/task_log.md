@@ -1,5 +1,41 @@
 # Task Log
 
+## 2026-05-08
+
+### What Was Completed
+- Synced the current Windows-side UI refinements onto Android while preserving the intended mobile-only layout rules:
+  - photo detail stays `上图下文`
+  - album detail stays `上文下图`
+- Reworked Android album detail so the top section is now text-first, with inline album title / description editing and a separate cover-edit entry.
+- Removed the extra album-cover display block from Android album detail subwindow 5 after confirming it was the unwanted duplicated element.
+- Reduced Android spine-wall widths to half of the shared desktop baseline so the mobile compact mode feels less heavy.
+- Fixed dark-mode readability across shared surfaces, especially the `移动到其他相册 / 复制到其他相册` dialog and other deep-background cards that still used dark text.
+- Applied theme-aware title/body/muted text helpers to shared UI areas so Windows and Android both inherit lighter text on dark surfaces.
+- Rebuilt Windows and Android packages after the Android layout and dark-mode changes.
+
+### Files Changed
+- `lib/main.dart`
+- `WORKLOG.md`
+- `README.md`
+- `docs/current_status.md`
+- `docs/task_log.md`
+
+### How To Verify
+- Run `flutter analyze --no-pub`
+- Run `flutter build windows`
+- Run `flutter build apk`
+- On Android, open album detail and confirm subwindow 5 no longer shows a duplicated cover block.
+- On Android, switch to spine-wall mode and confirm the spines are visibly narrower than before.
+- In dark mode on both Windows and Android, open the move/copy target dialog and confirm the dialog title and album names are readable on dark backgrounds.
+- In dark mode, check add-photo, favorites, and recycle-bin text for remaining deep-background dark-text regressions.
+
+### Current Problem
+- The local untracked file `相册界面2.png` still has not been added to version control.
+- A few pages may still contain older hardcoded light-mode-first colors, so dark mode should get another focused cleanup pass.
+
+### Next Suggestion
+- Do one more targeted dark-mode readability sweep, then update or repair widget tests once the UI behavior is stable enough to lock.
+
 ## 2026-05-07
 
 ### What Was Completed

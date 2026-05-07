@@ -1,19 +1,19 @@
 # Current Status
 
 ## Completed This Round
-- Unified album-detail multi-select with recycle-bin behavior: `批量选中`, red border selection state, explicit cancel, and no auto-exit when the selected count returns to zero.
-- Added album-detail batch actions for `删除`, `移动`, and `复制`, and tightened the target-album picker into a square-corner compact list with bordered album names plus `新建列表`.
-- Restored the focused album cover pencil in single-album mode so cover selection now comes from the current album's own photo thumbnails.
-- Split single-album editing into two independent entries: cover editing on the image, and inline album title / description editing on the text side.
-- Hid the debug-only red frames and top-right subwindow numbers behind the disabled debug switch.
-- Removed the photo-detail warning that blocked saving when the note text was empty.
-- Added more visible light borders to fullscreen action buttons and enabled mouse-wheel zoom for both photo detail and fullscreen image views.
-- Updated README and worklog so the repo description matches the current focused-album, fullscreen, and album-detail interactions.
+- Synced the recent Windows-side interaction and theme work onto Android while keeping the intended mobile-only layout differences:
+  - photo detail remains `上图下文`
+  - album detail remains `上文下图`
+- Reworked Android album detail so the top block now focuses on inline album text editing and a separate cover-edit entry.
+- Removed the extra album-cover display block from Android album detail subwindow 5; the page no longer repeats the cover there.
+- Narrowed Android spine-wall widths to half of the shared desktop baseline so the mobile compact view feels lighter.
+- Fixed dark-mode readability in shared UI areas by switching dark-background text to light theme-driven colors.
+- Updated move/copy target dialogs, add-photo cards, favorites, recycle-bin text, and related shared panels to use the new dark-mode text helpers.
+- Rebuilt both Windows and Android outputs after the theme and Android layout updates.
 
 ## Main Files Changed
 - `README.md`
 - `lib/main.dart`
-- `test/widget_test.dart`
 - `WORKLOG.md`
 - `docs/current_status.md`
 - `docs/task_log.md`
@@ -21,10 +21,12 @@
 ## Validation
 - `flutter analyze --no-pub`
 - `flutter build windows`
+- `flutter build apk`
 
 ## Current Issues
 - The untracked image `相册界面2.png` is still present locally and has not been added to the repo.
-- `flutter test` is currently failing in existing widget tests that still assume older photo-detail layout behavior and older album-editor flows.
+- A few remaining screens still use older light-mode-first hardcoded colors; dark mode is improved, but another sweep is still worth doing.
+- `flutter test` has not been refreshed in this round and still needs a focused pass once the current UI behavior stabilizes again.
 
 ## Suggested Next Step
-- Validate the fullscreen button border and wheel-zoom behavior in real usage, then repair the outdated widget tests.
+- Validate Android album-detail layout, spine-wall width, and dark-mode readability on real usage, then repair the outdated widget tests.
