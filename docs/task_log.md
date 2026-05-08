@@ -10,6 +10,9 @@
 - Moved the photo date into the title subwindow, alongside the photo title instead of the note subwindow.
 - Increased the Android note editor to a 10-line minimum, made it content-driven, and added a draggable right-side scrollbar for long text.
 - Kept fullscreen mobile pinch/drag behavior on a separate Android-specific parameter set and rebuilt the Android release package after the interaction changes.
+- Tightened Android detail layouts again so the stacked sections sit closer to full width, the title/date region is more compact, and note tools sit at the lower-right.
+- Added a settings-panel `关于软件` action that reads `about.txt` from the repo root and shows it in a read-only dialog.
+- Renamed the Android app to `予已拾光` and regenerated Android launcher icons from `pic.jpg`.
 - Synced the current Windows-side UI refinements onto Android while preserving the intended mobile-only layout rules:
   - photo detail stays `上图下文`
   - album detail stays `上文下图`
@@ -22,6 +25,10 @@
 
 ### Files Changed
 - `lib/main.dart`
+- `android/app/src/main/AndroidManifest.xml`
+- `android/app/src/main/res/mipmap-*/ic_launcher.png`
+- `about.txt`
+- `pic.jpg`
 - `test/widget_test.dart`
 - `WORKLOG.md`
 - `README.md`
@@ -31,6 +38,8 @@
 ### How To Verify
 - Run `flutter analyze --no-pub`
 - Run `flutter build apk`
+- Open settings and confirm `关于软件` opens a read-only dialog showing `about.txt`.
+- On Android, confirm the app name is `予已拾光` and the launcher icon has updated from `pic.jpg`.
 - On Android, open photo detail and confirm the title/date live in subwindow `9` while note content lives in subwindow `10`.
 - On Android, enter note edit mode and confirm the note editor starts at 10 lines, grows with content, and shows a draggable scrollbar on the right.
 - On Android, open fullscreen photo mode and confirm pinch/drag uses the dedicated mobile interaction path.

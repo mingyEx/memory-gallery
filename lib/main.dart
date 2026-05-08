@@ -985,6 +985,7 @@ Future<void> showPrototypeSettingsSheet(
   required DataActionCallback onImportDataPressed,
   required DataActionCallback onCustomBackgroundPressed,
   required DataActionCallback onClearBackgroundPressed,
+  required DataActionCallback onAboutSoftwarePressed,
 }) {
   final bool isDesktop = MediaQuery.of(context).size.width >= 900;
   final ThemeData theme = Theme.of(context);
@@ -1049,6 +1050,7 @@ Future<void> showPrototypeSettingsSheet(
                         onImportDataPressed: onImportDataPressed,
                         onCustomBackgroundPressed: onCustomBackgroundPressed,
                         onClearBackgroundPressed: onClearBackgroundPressed,
+                        onAboutSoftwarePressed: onAboutSoftwarePressed,
                         desktop: true,
                       ),
                     ),
@@ -1077,6 +1079,7 @@ Future<void> showPrototypeSettingsSheet(
               onImportDataPressed: onImportDataPressed,
               onCustomBackgroundPressed: onCustomBackgroundPressed,
               onClearBackgroundPressed: onClearBackgroundPressed,
+              onAboutSoftwarePressed: onAboutSoftwarePressed,
               desktop: false,
             ),
           ),
@@ -1094,6 +1097,7 @@ class _PrototypeSettingsContent extends StatelessWidget {
     required this.onImportDataPressed,
     required this.onCustomBackgroundPressed,
     required this.onClearBackgroundPressed,
+    required this.onAboutSoftwarePressed,
     required this.desktop,
   });
 
@@ -1103,6 +1107,7 @@ class _PrototypeSettingsContent extends StatelessWidget {
   final DataActionCallback onImportDataPressed;
   final DataActionCallback onCustomBackgroundPressed;
   final DataActionCallback onClearBackgroundPressed;
+  final DataActionCallback onAboutSoftwarePressed;
   final bool desktop;
 
   @override
@@ -1276,6 +1281,19 @@ class _PrototypeSettingsContent extends StatelessWidget {
             ],
           ),
         ),
+        _PrototypeOptionTile(
+          icon: Icons.info_outline_rounded,
+          title: '关于软件',
+          subtitle: '查看项目说明与只读介绍文本。',
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed: onAboutSoftwarePressed,
+              icon: const Icon(Icons.article_outlined, size: 18),
+              label: const Text('关于软件'),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1323,7 +1341,7 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '电子相册',
+      title: '予已拾光',
       debugShowCheckedModeBanner: false,
       themeMode: _appearance.themeMode,
       theme: _buildTheme(Brightness.light, _appearance.themeStyle),
@@ -1345,6 +1363,7 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         onImportDataPressed: _importLocalData,
         onCustomBackgroundPressed: _pickCustomBackground,
         onClearBackgroundPressed: _clearCustomBackground,
+        onAboutSoftwarePressed: _showAboutSoftware,
       ),
     );
   }
@@ -1614,6 +1633,48 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     });
     await LocalAlbumStore.saveAlbums(_albums);
     await LocalAlbumStore.saveAppearance(_appearance);
+  }
+
+  Future<void> _showAboutSoftware() async {
+    final String path =
+        '${Directory.current.path}${Platform.pathSeparator}about.txt';
+    String content;
+    try {
+      content = await File(path).readAsString();
+    } catch (_) {
+      content = '未能读取 about.txt。';
+    }
+    if (!mounted) {
+      return;
+    }
+    final TextEditingController controller = TextEditingController(text: content);
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('关于软件'),
+          content: SizedBox(
+            width: 560,
+            child: TextField(
+              controller: controller,
+              readOnly: true,
+              minLines: 12,
+              maxLines: 18,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
   }
 
   void _createAlbum(AlbumData album) {
@@ -2001,6 +2062,7 @@ class AlbumHomePage extends StatefulWidget {
     required this.onImportDataPressed,
     required this.onCustomBackgroundPressed,
     required this.onClearBackgroundPressed,
+    required this.onAboutSoftwarePressed,
     super.key,
   });
 
@@ -2020,6 +2082,7 @@ class AlbumHomePage extends StatefulWidget {
   final DataActionCallback onImportDataPressed;
   final DataActionCallback onCustomBackgroundPressed;
   final DataActionCallback onClearBackgroundPressed;
+  final DataActionCallback onAboutSoftwarePressed;
 
   @override
   State<AlbumHomePage> createState() => _AlbumHomePageState();
@@ -2126,6 +2189,7 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
                   onImportDataPressed: widget.onImportDataPressed,
                   onCustomBackgroundPressed: widget.onCustomBackgroundPressed,
                   onClearBackgroundPressed: widget.onClearBackgroundPressed,
+                  onAboutSoftwarePressed: widget.onAboutSoftwarePressed,
                   section: _section,
                   favoritePhotos: _favoritePhotos,
                   trashPhotos: _trashPhotos,
@@ -2161,6 +2225,7 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
                   onImportDataPressed: widget.onImportDataPressed,
                   onCustomBackgroundPressed: widget.onCustomBackgroundPressed,
                   onClearBackgroundPressed: widget.onClearBackgroundPressed,
+                  onAboutSoftwarePressed: widget.onAboutSoftwarePressed,
                   section: _section,
                   desktopViewMode: _desktopViewMode,
                   favoritePhotos: _favoritePhotos,
@@ -2292,6 +2357,7 @@ class _DesktopHomeLayout extends StatelessWidget {
     required this.onImportDataPressed,
     required this.onCustomBackgroundPressed,
     required this.onClearBackgroundPressed,
+    required this.onAboutSoftwarePressed,
     required this.section,
     required this.onSectionChanged,
     required this.searchQuery,
@@ -2326,6 +2392,7 @@ class _DesktopHomeLayout extends StatelessWidget {
   final DataActionCallback onImportDataPressed;
   final DataActionCallback onCustomBackgroundPressed;
   final DataActionCallback onClearBackgroundPressed;
+  final DataActionCallback onAboutSoftwarePressed;
   final HomeSection section;
   final ValueChanged<HomeSection> onSectionChanged;
   final String searchQuery;
@@ -2372,6 +2439,7 @@ class _DesktopHomeLayout extends StatelessWidget {
                     onImportDataPressed: onImportDataPressed,
                     onCustomBackgroundPressed: onCustomBackgroundPressed,
                     onClearBackgroundPressed: onClearBackgroundPressed,
+                    onAboutSoftwarePressed: onAboutSoftwarePressed,
                   ),
                   Positioned.fill(
                     child: IgnorePointer(
@@ -2545,6 +2613,7 @@ class _MobileHomeLayout extends StatelessWidget {
     required this.onImportDataPressed,
     required this.onCustomBackgroundPressed,
     required this.onClearBackgroundPressed,
+    required this.onAboutSoftwarePressed,
     required this.section,
     required this.desktopViewMode,
     required this.searchQuery,
@@ -2571,6 +2640,7 @@ class _MobileHomeLayout extends StatelessWidget {
   final DataActionCallback onImportDataPressed;
   final DataActionCallback onCustomBackgroundPressed;
   final DataActionCallback onClearBackgroundPressed;
+  final DataActionCallback onAboutSoftwarePressed;
   final HomeSection section;
   final DesktopAlbumViewMode desktopViewMode;
   final String searchQuery;
@@ -2596,6 +2666,7 @@ class _MobileHomeLayout extends StatelessWidget {
             onImportDataPressed: onImportDataPressed,
             onCustomBackgroundPressed: onCustomBackgroundPressed,
             onClearBackgroundPressed: onClearBackgroundPressed,
+            onAboutSoftwarePressed: onAboutSoftwarePressed,
             desktop: false,
           ),
         ),
@@ -2836,6 +2907,7 @@ class _HomeHeader extends StatelessWidget {
     required this.onImportDataPressed,
     required this.onCustomBackgroundPressed,
     required this.onClearBackgroundPressed,
+    required this.onAboutSoftwarePressed,
     required this.desktop,
   });
 
@@ -2848,6 +2920,7 @@ class _HomeHeader extends StatelessWidget {
   final DataActionCallback onImportDataPressed;
   final DataActionCallback onCustomBackgroundPressed;
   final DataActionCallback onClearBackgroundPressed;
+  final DataActionCallback onAboutSoftwarePressed;
   final bool desktop;
 
   @override
@@ -2927,6 +3000,7 @@ class _HomeHeader extends StatelessWidget {
               onImportDataPressed: onImportDataPressed,
               onCustomBackgroundPressed: onCustomBackgroundPressed,
               onClearBackgroundPressed: onClearBackgroundPressed,
+              onAboutSoftwarePressed: onAboutSoftwarePressed,
             ),
             style: IconButton.styleFrom(
               minimumSize: const Size(38, 38),
@@ -2967,6 +3041,7 @@ class _DesktopSidebar extends StatelessWidget {
     required this.onImportDataPressed,
     required this.onCustomBackgroundPressed,
     required this.onClearBackgroundPressed,
+    required this.onAboutSoftwarePressed,
   });
 
   final HomeSection section;
@@ -2982,6 +3057,7 @@ class _DesktopSidebar extends StatelessWidget {
   final DataActionCallback onImportDataPressed;
   final DataActionCallback onCustomBackgroundPressed;
   final DataActionCallback onClearBackgroundPressed;
+  final DataActionCallback onAboutSoftwarePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -3163,10 +3239,11 @@ class _DesktopSidebar extends StatelessWidget {
                 appearance: appearance,
                 onChanged: onAppearanceChanged,
                 onExportDataPressed: onExportDataPressed,
-                onImportDataPressed: onImportDataPressed,
-                onCustomBackgroundPressed: onCustomBackgroundPressed,
-                onClearBackgroundPressed: onClearBackgroundPressed,
-              ),
+              onImportDataPressed: onImportDataPressed,
+              onCustomBackgroundPressed: onCustomBackgroundPressed,
+              onClearBackgroundPressed: onClearBackgroundPressed,
+              onAboutSoftwarePressed: onAboutSoftwarePressed,
+            ),
               style: IconButton.styleFrom(
                 minimumSize: const Size(44, 44),
                 backgroundColor: buttonBase,
@@ -5108,9 +5185,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
               )
             : SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
-                  14,
+                  0,
                   8,
-                  14,
+                  0,
                   _isSelectionMode ? 88 : 16,
                 ),
                 child: Column(
@@ -5136,36 +5213,38 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                         const _SectionMarker(number: 5),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    Stack(
-                      children: <Widget>[
-                        MasonryPhotoGrid(
-                          album: _album,
-                          onAlbumChanged: _replaceAlbum,
-                          onPhotosTrashed: widget.onPhotosTrashed,
-                          selectionMode: _isSelectionMode,
-                          selectedPhotoIds: _selectedPhotoIds,
-                          onToggleSelection: _togglePhotoSelection,
-                          onStartSelection: _startSelection,
-                          scrollable: false,
-                        ),
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                border: _showDebugSectionFrames
-                                    ? Border.all(
-                                        color: const Color(0xFFE53935),
-                                        width: 2,
-                                      )
-                                    : null,
-                                borderRadius: BorderRadius.circular(5),
+                    Transform.translate(
+                      offset: const Offset(0, -10),
+                      child: Stack(
+                        children: <Widget>[
+                          MasonryPhotoGrid(
+                            album: _album,
+                            onAlbumChanged: _replaceAlbum,
+                            onPhotosTrashed: widget.onPhotosTrashed,
+                            selectionMode: _isSelectionMode,
+                            selectedPhotoIds: _selectedPhotoIds,
+                            onToggleSelection: _togglePhotoSelection,
+                            onStartSelection: _startSelection,
+                            scrollable: false,
+                          ),
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: _showDebugSectionFrames
+                                      ? Border.all(
+                                          color: const Color(0xFFE53935),
+                                          width: 2,
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const _SectionMarker(number: 6),
-                      ],
+                          const _SectionMarker(number: 6),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -5318,7 +5397,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     return IntrinsicHeight(
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
         decoration: BoxDecoration(
           color: stageColor,
           borderRadius: BorderRadius.circular(5),
@@ -6194,6 +6273,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   late List<PhotoData> _photos;
   late final FocusNode _pageFocusNode;
   late final FocusNode _noteEditorFocusNode;
+  late final ScrollController _mobileDetailScrollController;
   late final ScrollController _notePanelScrollController;
   late TextEditingController _titleController;
   late TextEditingController _noteController;
@@ -6216,10 +6296,11 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     _index = widget.initialIndex;
     _pageFocusNode = FocusNode(debugLabel: 'photo-detail-page');
     _noteEditorFocusNode = FocusNode(debugLabel: 'photo-detail-note-editor');
+    _mobileDetailScrollController = ScrollController();
     _notePanelScrollController = ScrollController();
     _titleController = TextEditingController(text: photo.title);
     _noteController = TextEditingController(text: photo.note);
-    _dateController = TextEditingController(text: photo.date);
+    _dateController = TextEditingController(text: _resolvedPhotoDateText(photo));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _pageFocusNode.requestFocus();
@@ -6231,6 +6312,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   void dispose() {
     _pageFocusNode.dispose();
     _noteEditorFocusNode.dispose();
+    _mobileDetailScrollController.dispose();
     _notePanelScrollController.dispose();
     _titleController.dispose();
     _noteController.dispose();
@@ -6241,8 +6323,6 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   @override
   Widget build(BuildContext context) {
     final bool isDesktop = MediaQuery.of(context).size.width >= 900;
-    final PrototypeThemeTokens? tokens =
-        Theme.of(context).extension<PrototypeThemeTokens>();
     final Widget detailContent = _LandscapeDetailLayout(
       photo: photo,
       zoom: _zoom,
@@ -6264,6 +6344,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
         });
       },
       desktop: isDesktop,
+      mobileScrollController: _mobileDetailScrollController,
       textPanelFraction: _textPanelFraction,
       onTextPanelFractionChanged: (double value) {
         setState(() {
@@ -6323,38 +6404,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
                   child: detailContent,
                 )
-              : Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: double.infinity),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color:
-                              tokens?.surface ??
-                              Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(
-                            color:
-                                tokens?.border ??
-                                Theme.of(context).dividerColor,
-                          ),
-                          boxShadow: <BoxShadow>[
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.10),
-                              blurRadius: 18,
-                              offset: Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: detailContent,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+              : detailContent,
         ),
       ),
     );
@@ -6428,69 +6478,70 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   }
 
   Widget _buildTextPanel() {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 900;
+    final Widget panel = _PhotoTextPanel(
+      photo: photo,
+      compact: photo.orientation == PhotoOrientation.portrait,
+      isEditingTitle: _isEditingTitle,
+      isEditingNote: _isEditingNote,
+      titleController: _titleController,
+      noteController: _noteController,
+      noteFocusNode: _noteEditorFocusNode,
+      dateController: _dateController,
+      notePanelScrollController: _notePanelScrollController,
+      noteFontSize: _noteFontSize,
+      onEditTitle: () {
+        setState(() {
+          _isEditingTitle = true;
+          _isEditingNote = false;
+        });
+      },
+      onEditNote: () {
+        setState(() {
+          _isEditingNote = true;
+          _isEditingTitle = false;
+        });
+        if (Theme.of(context).platform == TargetPlatform.android) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) {
+              return;
+            }
+            _noteEditorFocusNode.requestFocus();
+            _noteController.selection = TextSelection.collapsed(
+              offset: _noteController.text.length,
+            );
+          });
+        }
+      },
+      onCancelTitle: () {
+        setState(() {
+          _cancelTitleEditing();
+        });
+      },
+      onCancelNote: () {
+        setState(() {
+          _cancelNoteEditing();
+        });
+      },
+      onPickDate: _pickDate,
+      onIncreaseFont: () {
+        setState(() {
+          _noteFontSize = (_noteFontSize + 1).clamp(13.0, 22.0);
+        });
+      },
+      onDecreaseFont: () {
+        setState(() {
+          _noteFontSize = (_noteFontSize - 1).clamp(13.0, 22.0);
+        });
+      },
+      onSaveTitle: _savePhotoTitle,
+      onSaveNote: _savePhotoNote,
+      showNoteOnly: false,
+    );
     return Column(
+      mainAxisSize: isDesktop ? MainAxisSize.max : MainAxisSize.min,
       children: <Widget>[
-        Expanded(
-          child: _PhotoTextPanel(
-            photo: photo,
-            compact: photo.orientation == PhotoOrientation.portrait,
-            isEditingTitle: _isEditingTitle,
-            isEditingNote: _isEditingNote,
-            titleController: _titleController,
-            noteController: _noteController,
-            noteFocusNode: _noteEditorFocusNode,
-            dateController: _dateController,
-            notePanelScrollController: _notePanelScrollController,
-            noteFontSize: _noteFontSize,
-            onEditTitle: () {
-              setState(() {
-                _isEditingTitle = true;
-                _isEditingNote = false;
-              });
-            },
-            onEditNote: () {
-              setState(() {
-                _isEditingNote = true;
-                _isEditingTitle = false;
-              });
-              if (Theme.of(context).platform == TargetPlatform.android) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) {
-                    return;
-                  }
-                  _noteEditorFocusNode.requestFocus();
-                  _noteController.selection = TextSelection.collapsed(
-                    offset: _noteController.text.length,
-                  );
-                });
-              }
-            },
-            onCancelTitle: () {
-              setState(() {
-                _cancelTitleEditing();
-              });
-            },
-            onCancelNote: () {
-              setState(() {
-                _cancelNoteEditing();
-              });
-            },
-            onPickDate: _pickDate,
-            onIncreaseFont: () {
-              setState(() {
-                _noteFontSize = (_noteFontSize + 1).clamp(13.0, 22.0);
-              });
-            },
-            onDecreaseFont: () {
-              setState(() {
-                _noteFontSize = (_noteFontSize - 1).clamp(13.0, 22.0);
-              });
-            },
-            onSaveTitle: _savePhotoTitle,
-            onSaveNote: _savePhotoNote,
-            showNoteOnly: false,
-          ),
-        ),
+        if (isDesktop) Expanded(child: panel) else panel,
         Align(
           alignment: Alignment.centerRight,
           child: IconButton(
@@ -6549,18 +6600,19 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     _isEditingNote = false;
     _titleController.text = photo.title;
     _noteController.text = photo.note;
-    _dateController.text = photo.date;
+    _dateController.text = _resolvedPhotoDateText(photo);
   }
 
   void _cancelTitleEditing() {
     _isEditingTitle = false;
     _titleController.text = photo.title;
+    _dateController.text = _resolvedPhotoDateText(photo);
   }
 
   void _cancelNoteEditing() {
     _isEditingNote = false;
     _noteController.text = photo.note;
-    _dateController.text = photo.date;
+    _dateController.text = _resolvedPhotoDateText(photo);
   }
 
   Future<void> _pickDate() async {
@@ -6605,15 +6657,16 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
 
   void _savePhotoNote() {
     final String nextNote = _noteController.text.trim();
+    final bool isAndroid = Theme.of(context).platform == TargetPlatform.android;
     final String nextDateText = _dateController.text.trim();
-    final DateTime? parsedDate = parseChineseDate(nextDateText);
-    if (parsedDate == null) {
+    final DateTime? parsedDate = isAndroid ? null : parseChineseDate(nextDateText);
+    if (!isAndroid && parsedDate == null) {
       showPrototypeMessage(context, '日期格式应为 2024年10月2日。');
       return;
     }
     final PhotoData updatedPhoto = photo.copyWith(
       note: nextNote,
-      date: formatAlbumDate(parsedDate),
+      date: isAndroid ? _resolvedPhotoDateText(photo) : formatAlbumDate(parsedDate!),
     );
     setState(() {
       _photos[_index] = updatedPhoto;
@@ -6652,7 +6705,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     updatedPhotos[_index] = updatedPhoto;
     setState(() {
       _photos = updatedPhotos;
-      _dateController.text = updatedPhoto.date;
+      _dateController.text = _resolvedPhotoDateText(updatedPhoto);
       _rotationTurns = 0;
       _zoom = 1;
       _panOffset = Offset.zero;
@@ -6716,6 +6769,14 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
           duration: const Duration(milliseconds: 1400),
         ),
       );
+  }
+
+  String _resolvedPhotoDateText(PhotoData value) {
+    final String trimmed = value.date.trim();
+    if (trimmed.isNotEmpty) {
+      return trimmed;
+    }
+    return formatAlbumDate(DateTime.now());
   }
 
   Future<void> _deleteCurrentPhoto() async {
@@ -6921,6 +6982,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
     required this.textPanelVisible,
     required this.onExpandTextPanel,
     required this.desktop,
+    required this.mobileScrollController,
     required this.textPanelFraction,
     required this.onTextPanelFractionChanged,
     this.focusNoteEditor = false,
@@ -6938,6 +7000,7 @@ class _LandscapeDetailLayout extends StatelessWidget {
   final bool textPanelVisible;
   final VoidCallback onExpandTextPanel;
   final bool desktop;
+  final ScrollController mobileScrollController;
   final double textPanelFraction;
   final ValueChanged<double> onTextPanelFractionChanged;
   final bool focusNoteEditor;
@@ -7018,75 +7081,93 @@ class _LandscapeDetailLayout extends StatelessWidget {
           ],
         );
       }
-      return Column(
-        key: const ValueKey<String>('mobile-photo-detail-layout'),
-        children: <Widget>[
-          Expanded(
-            flex: photo.orientation == PhotoOrientation.portrait ? 5 : 4,
-            child: Stack(
-              children: <Widget>[
-                Positioned.fill(
-                  child: _DetailImageFrame(
-                    photo: photo,
-                    zoom: zoom,
-                    turns: turns,
-                    panOffset: panOffset,
-                    onPanUpdate: onPanUpdate,
-                    onZoomChanged: onZoomChanged,
-                    desktop: desktop,
-                  ),
-                ),
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  bottom: 12,
-                  child: toolbar,
-                ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: _showDebugSectionFrames
-                            ? Border.all(
-                                color: const Color(0xFFE53935),
-                                width: 2,
-                              )
-                            : null,
-                        borderRadius: BorderRadius.circular(5),
+      return LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double imageHeight =
+              constraints.maxHeight *
+              (photo.orientation == PhotoOrientation.portrait ? 0.52 : 0.46);
+          return Scrollbar(
+            controller: mobileScrollController,
+            thumbVisibility: true,
+            interactive: true,
+            child: SingleChildScrollView(
+              controller: mobileScrollController,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  key: const ValueKey<String>('mobile-photo-detail-layout'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    SizedBox(
+                      height: imageHeight,
+                      child: Stack(
+                        children: <Widget>[
+                          Positioned.fill(
+                            child: _DetailImageFrame(
+                              photo: photo,
+                              zoom: zoom,
+                              turns: turns,
+                              panOffset: panOffset,
+                              onPanUpdate: onPanUpdate,
+                              onZoomChanged: onZoomChanged,
+                              desktop: desktop,
+                            ),
+                          ),
+                          Positioned(
+                            left: 12,
+                            right: 12,
+                            bottom: 12,
+                            child: toolbar,
+                          ),
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: _showDebugSectionFrames
+                                      ? Border.all(
+                                          color: const Color(0xFFE53935),
+                                          width: 2,
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const _SectionMarker(number: 7),
+                        ],
                       ),
                     ),
-                  ),
-                ),
-                const _SectionMarker(number: 7),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            flex: photo.orientation == PhotoOrientation.portrait ? 4 : 5,
-            child: Stack(
-              children: <Widget>[
-                Positioned.fill(child: textPanel),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: _showDebugSectionFrames
-                            ? Border.all(
-                                color: const Color(0xFFE53935),
-                                width: 2,
-                              )
-                            : null,
-                        borderRadius: BorderRadius.circular(5),
+                    Transform.translate(
+                      offset: const Offset(0, -10),
+                      child: Stack(
+                        children: <Widget>[
+                          textPanel,
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: _showDebugSectionFrames
+                                      ? Border.all(
+                                          color: const Color(0xFFE53935),
+                                          width: 2,
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const _SectionMarker(number: 8),
+                        ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                const _SectionMarker(number: 8),
-              ],
+              ),
             ),
-          ),
-        ],
+          );
+        },
       );
     }
     return LayoutBuilder(
@@ -7523,6 +7604,8 @@ class _PhotoTextPanel extends StatelessWidget {
     final bool isAndroid = theme.platform == TargetPlatform.android;
     final double noteLineHeight = noteFontSize * 1.7;
     final double minNoteHeight = noteLineHeight * 10;
+    final String resolvedPhotoDate =
+        photo.date.trim().isNotEmpty ? photo.date : dateController.text.trim();
     final Widget titleEditor = TextField(
       controller: titleController,
       decoration: InputDecoration(
@@ -7667,80 +7750,103 @@ class _PhotoTextPanel extends StatelessWidget {
             border: Border.all(color: tokens.border.withValues(alpha: 0.85)),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.fromLTRB(
+              12,
+              isAndroid ? 4 : 12,
+              12,
+              isAndroid ? 8 : 12,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        '照片标题',
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: mutedText,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (isEditingTitle) ...<Widget>[
-                      IconButton(
-                        tooltip: '保存标题',
-                        onPressed: onSaveTitle,
-                        icon: const Icon(Icons.check_rounded, size: 20),
-                      ),
-                      IconButton(
-                        tooltip: '取消编辑标题',
-                        onPressed: onCancelTitle,
-                        icon: const Icon(Icons.close_rounded, size: 20),
-                      ),
-                    ] else
-                      IconButton(
-                        tooltip: '编辑标题',
-                        onPressed: onEditTitle,
-                        icon: const Icon(Icons.edit_outlined, size: 20),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: isEditingTitle
-                          ? titleEditor
-                          : Text(
-                              photo.title,
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: strongText,
-                                  ),
-                            ),
-                    ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: isEditingTitle
-                          ? SizedBox(
-                              width: 176,
-                              child: dateEditorRow,
-                            )
-                          : Align(
-                              alignment: Alignment.topRight,
-                              child: Text(
-                                photo.date,
-                                textAlign: TextAlign.right,
-                                style: Theme.of(context).textTheme.bodyMedium
+                if (isAndroid) ...<Widget>[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: isEditingTitle
+                            ? titleEditor
+                            : Text(
+                                photo.title,
+                                style: Theme.of(context).textTheme.headlineSmall
                                     ?.copyWith(
-                                      color: mutedText,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
+                                      color: strongText,
                                     ),
                               ),
-                            ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (isEditingTitle) ...<Widget>[
+                        IconButton(
+                          tooltip: '保存标题',
+                          onPressed: onSaveTitle,
+                          icon: const Icon(Icons.check_rounded, size: 18),
+                        ),
+                        IconButton(
+                          tooltip: '取消编辑标题',
+                          onPressed: onCancelTitle,
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                        ),
+                      ] else
+                        IconButton(
+                          tooltip: '编辑标题',
+                          onPressed: onEditTitle,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      resolvedPhotoDate,
+                      textAlign: TextAlign.right,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: mutedText,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ] else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: isEditingTitle
+                            ? titleEditor
+                            : Text(
+                                photo.title,
+                                style: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: strongText,
+                                    ),
+                              ),
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: isEditingTitle
+                            ? SizedBox(
+                                width: 176,
+                                child: dateEditorRow,
+                              )
+                            : Align(
+                                alignment: Alignment.topRight,
+                                child: Text(
+                                  resolvedPhotoDate,
+                                  textAlign: TextAlign.right,
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: mutedText,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -7776,43 +7882,6 @@ class _PhotoTextPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        '文本描述',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              color: strongText,
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _TinyTextScaleButton(
-                          label: 'A-',
-                          onTap: onDecreaseFont,
-                        ),
-                        const SizedBox(width: 6),
-                        _TinyTextScaleButton(
-                          label: 'A+',
-                          onTap: onIncreaseFont,
-                        ),
-                        if (!isEditingNote)
-                          IconButton(
-                            tooltip: '编辑正文',
-                            onPressed: onEditNote,
-                            icon: const Icon(Icons.edit_outlined, size: 20),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
                 if (!isAndroid)
                   Expanded(
                     child: isEditingNote
@@ -7886,94 +7955,110 @@ class _PhotoTextPanel extends StatelessWidget {
                           ),
                   )
                 else
-                  Scrollbar(
-                    controller: notePanelScrollController,
-                    thumbVisibility: true,
-                    interactive: true,
-                    child: SingleChildScrollView(
-                      controller: notePanelScrollController,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: minNoteHeight + 24,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            if (isEditingNote) ...<Widget>[
-                              noteEditor,
-                              const SizedBox(height: 12),
-                              actionButtons,
-                            ] else
-                              ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minHeight: minNoteHeight,
-                                ),
-                                child: MarkdownBody(
-                                  data: photo.note,
-                                  selectable: false,
-                                  styleSheet: MarkdownStyleSheet.fromTheme(
-                                    Theme.of(context),
-                                  ).copyWith(
-                                    p: Theme.of(context).textTheme.bodyLarge
-                                        ?.copyWith(
-                                          fontSize: noteFontSize,
-                                          height: 1.7,
-                                          color: bodyText,
-                                        ),
-                                    h1: Theme.of(context).textTheme.headlineSmall
-                                        ?.copyWith(
-                                          color: strongText,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                    h2: Theme.of(context).textTheme.titleLarge
-                                        ?.copyWith(
-                                          color: strongText,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                    h3: Theme.of(context).textTheme.titleMedium
-                                        ?.copyWith(
-                                          color: strongText,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                    strong: Theme.of(context).textTheme.bodyLarge
-                                        ?.copyWith(
-                                          fontSize: noteFontSize,
-                                          height: 1.7,
-                                          color: strongText,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                    em: Theme.of(context).textTheme.bodyLarge
-                                        ?.copyWith(
-                                          fontSize: noteFontSize,
-                                          height: 1.7,
-                                          color: bodyText,
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                    blockquote: Theme.of(context)
-                                        .textTheme
-                                        .bodyLarge
-                                        ?.copyWith(
-                                          fontSize: noteFontSize,
-                                          height: 1.7,
-                                          color: mutedText,
-                                        ),
-                                    code: Theme.of(context).textTheme.bodyMedium
-                                        ?.copyWith(
-                                          fontSize: noteFontSize - 1,
-                                          color: strongText,
-                                        ),
-                                    codeblockDecoration: BoxDecoration(
-                                      color: codeBlockColor,
-                                      borderRadius: BorderRadius.circular(5),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: minNoteHeight + 24,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        if (isEditingNote) ...<Widget>[
+                          noteEditor,
+                          const SizedBox(height: 12),
+                          actionButtons,
+                        ] else
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: minNoteHeight,
+                            ),
+                            child: MarkdownBody(
+                              data: photo.note,
+                              selectable: false,
+                              styleSheet: MarkdownStyleSheet.fromTheme(
+                                Theme.of(context),
+                              ).copyWith(
+                                p: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: bodyText,
                                     ),
-                                    blockSpacing: 14,
-                                  ),
+                                h1: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                h2: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                h3: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                strong: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                em: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: bodyText,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                blockquote: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: mutedText,
+                                    ),
+                                code: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontSize: noteFontSize - 1,
+                                      color: strongText,
+                                    ),
+                                codeblockDecoration: BoxDecoration(
+                                  color: codeBlockColor,
+                                  borderRadius: BorderRadius.circular(5),
                                 ),
+                                blockSpacing: 14,
                               ),
-                          ],
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.bottomRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              _TinyTextScaleButton(
+                                label: 'A-',
+                                onTap: onDecreaseFont,
+                              ),
+                              const SizedBox(width: 6),
+                              _TinyTextScaleButton(
+                                label: 'A+',
+                                onTap: onIncreaseFont,
+                              ),
+                              if (!isEditingNote)
+                                IconButton(
+                                  tooltip: '编辑正文',
+                                  onPressed: onEditNote,
+                                  icon: const Icon(Icons.edit_outlined, size: 20),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
               ],
@@ -8003,24 +8088,33 @@ class _PhotoTextPanel extends StatelessWidget {
     }
     final List<Widget> panelChildren = isAndroid && isEditingNote
         ? <Widget>[
-            noteSection,
-            const SizedBox(height: 12),
-            titleSection,
+            Transform.translate(
+              offset: const Offset(0, -8),
+              child: noteSection,
+            ),
+            Transform.translate(
+              offset: const Offset(0, -18),
+              child: titleSection,
+            ),
           ]
         : <Widget>[
             titleSection,
-            const SizedBox(height: 12),
-            isAndroid ? noteSection : Expanded(child: noteSection),
+            isAndroid
+                ? Transform.translate(
+                    offset: const Offset(0, -8),
+                    child: noteSection,
+                  )
+                : Expanded(child: noteSection),
           ];
 
     return DecoratedBox(
       decoration: BoxDecoration(
         color: panelColor,
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: tokens.border),
+        border: isAndroid ? null : Border.all(color: tokens.border),
       ),
       child: Padding(
-        padding: EdgeInsets.all(compact ? 22 : 18),
+        padding: EdgeInsets.all(isAndroid ? 0 : (compact ? 22 : 18)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: panelChildren,
@@ -8703,14 +8797,27 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
                                         ),
                                       ),
                                       Positioned(
-                                        top: 10,
-                                        right: 10,
-                                        child: IconButton.filledTonal(
-                                          tooltip: '编辑封面',
-                                          onPressed: _pickCover,
-                                          icon: const Icon(
-                                            Icons.edit_outlined,
-                                            size: 18,
+                                        right: 8,
+                                        bottom: 8,
+                                        child: SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: IconButton.filledTonal(
+                                            padding: EdgeInsets.zero,
+                                            visualDensity: const VisualDensity(
+                                              horizontal: -4,
+                                              vertical: -4,
+                                            ),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 16,
+                                              minHeight: 16,
+                                            ),
+                                            tooltip: '编辑封面',
+                                            onPressed: _pickCover,
+                                            icon: const Icon(
+                                              Icons.edit_outlined,
+                                              size: 10,
+                                            ),
                                           ),
                                         ),
                                       ),
