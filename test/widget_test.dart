@@ -526,10 +526,13 @@ void main() {
   });
 
   test('album json preserves cover framing values', () {
+    const String timestamp = '2026-05-04T10:30:00.000';
     const AlbumData album = AlbumData(
       id: 'album-1',
       title: '封面测试',
       subtitle: '1 张照片 · 2026年5月',
+      createdAt: timestamp,
+      updatedAt: timestamp,
       description: 'desc',
       style: PhotoStyle.sunlitRoom,
       photos: <PhotoData>[

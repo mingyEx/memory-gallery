@@ -1,32 +1,32 @@
 # Current Status
 
 ## Completed This Round
-- Synced the recent Windows-side interaction and theme work onto Android while keeping the intended mobile-only layout differences:
-  - photo detail remains `上图下文`
-  - album detail remains `上文下图`
-- Reworked Android album detail so the top block now focuses on inline album text editing and a separate cover-edit entry.
-- Removed the extra album-cover display block from Android album detail subwindow 5; the page no longer repeats the cover there.
-- Narrowed Android spine-wall widths to half of the shared desktop baseline so the mobile compact view feels lighter.
-- Fixed dark-mode readability in shared UI areas by switching dark-background text to light theme-driven colors.
-- Updated move/copy target dialogs, add-photo cards, favorites, recycle-bin text, and related shared panels to use the new dark-mode text helpers.
-- Rebuilt both Windows and Android outputs after the theme and Android layout updates.
+- Added strict `createdAt / updatedAt` album metadata handling so create, restore, move, and copy flows preserve real timestamps.
+- Switched image import to uncompressed local-file copying and removed Android-side `imageQuality` downscaling from the main import paths.
+- Removed the mobile single-album cover tilt so the first cover now sits perpendicular to the screen.
+- Reworked Android photo detail into separate image, title, and note regions, with the note area isolated as its own numbered debug subwindow.
+- Moved the photo date into the title subwindow so title and date now live together.
+- Changed Android note editing so the focused note path can hide the image/text wrapper and show only the note region while editing long paragraphs.
+- Increased the Android note editor to a 10-line minimum height, made it content-driven, and added a draggable right-side scrollbar.
+- Kept fullscreen mobile pinch/drag logic on its own Android parameters and rebuilt the latest Android installer package after the interaction updates.
 
 ## Main Files Changed
 - `README.md`
 - `lib/main.dart`
+- `test/widget_test.dart`
 - `WORKLOG.md`
 - `docs/current_status.md`
 - `docs/task_log.md`
 
 ## Validation
 - `flutter analyze --no-pub`
-- `flutter build windows`
 - `flutter build apk`
 
 ## Current Issues
 - The untracked image `相册界面2.png` is still present locally and has not been added to the repo.
+- The generated `feature_check_report.html` is still local-only and has not been added to the repo.
+- The Android photo-detail note-focus flow and fullscreen pinch feel still need validation on a real device, not just builds.
 - A few remaining screens still use older light-mode-first hardcoded colors; dark mode is improved, but another sweep is still worth doing.
-- `flutter test` has not been refreshed in this round and still needs a focused pass once the current UI behavior stabilizes again.
 
 ## Suggested Next Step
-- Validate Android album-detail layout, spine-wall width, and dark-mode readability on real usage, then repair the outdated widget tests.
+- Validate Android photo-detail note editing, scrollbar behavior, and fullscreen pinch feel on a real device, then repair the outdated widget tests.

@@ -897,6 +897,19 @@ String formatAlbumDate(DateTime value) {
   return '${value.year}年${value.month}月${value.day}日';
 }
 
+String formatAlbumUpdatedLabel(DateTime value) {
+  final String month = value.month.toString().padLeft(2, '0');
+  final String day = value.day.toString().padLeft(2, '0');
+  return '更新于 ${value.year}.$month.$day';
+}
+
+String buildAlbumSubtitle({
+  required int photoCount,
+  required DateTime updatedAt,
+}) {
+  return '$photoCount 张照片 · ${formatAlbumUpdatedLabel(updatedAt)}';
+}
+
 DateTime? parseExifDate(String text) {
   final RegExpMatch? match = RegExp(
     r'^(\d{4}):(\d{1,2}):(\d{1,2})(?: (\d{1,2}):(\d{1,2}):(\d{1,2}))?$',
@@ -1429,7 +1442,12 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         final AlbumData fallbackAlbum = AlbumData(
           id: 'album-restored-${DateTime.now().microsecondsSinceEpoch}',
           title: fallbackAlbumTitle,
-          subtitle: '0 张照片 · 最近恢复',
+          subtitle: buildAlbumSubtitle(
+            photoCount: 0,
+            updatedAt: DateTime.now(),
+          ),
+          createdAt: DateTime.now().toIso8601String(),
+          updatedAt: DateTime.now().toIso8601String(),
           description: '自动接收从回收站恢复、但原相册已不存在的照片。',
           style: entry.photo.style,
           photos: const <PhotoData>[],
@@ -1827,7 +1845,12 @@ List<AlbumData> buildDemoAlbums() {
     AlbumData(
       id: 'west-sichuan',
       title: '2024 川西之旅',
-      subtitle: '42 张照片 · 2024年10月',
+      subtitle: buildAlbumSubtitle(
+        photoCount: 42,
+        updatedAt: DateTime(2024, 10, 7),
+      ),
+      createdAt: DateTime(2024, 10, 2).toIso8601String(),
+      updatedAt: DateTime(2024, 10, 7).toIso8601String(),
       description: '高山、湖泊和秋色草甸，像把整段旅行放进了木质书架里。',
       style: PhotoStyle.mountainLake,
       photos: <PhotoData>[
@@ -1884,7 +1907,12 @@ List<AlbumData> buildDemoAlbums() {
     AlbumData(
       id: 'xiamen',
       title: '厦门之行',
-      subtitle: '26 张照片 · 2023年8月',
+      subtitle: buildAlbumSubtitle(
+        photoCount: 26,
+        updatedAt: DateTime(2023, 8, 20),
+      ),
+      createdAt: DateTime(2023, 8, 18).toIso8601String(),
+      updatedAt: DateTime(2023, 8, 20).toIso8601String(),
       description: '海边日落和城市小巷，整体颜色更暖，像一本晒过太阳的旅行册。',
       style: PhotoStyle.sunsetSea,
       photos: <PhotoData>[
@@ -1917,7 +1945,12 @@ List<AlbumData> buildDemoAlbums() {
     AlbumData(
       id: 'daily',
       title: '日常小片',
-      subtitle: '69 张照片 · 2025年2月',
+      subtitle: buildAlbumSubtitle(
+        photoCount: 69,
+        updatedAt: DateTime(2025, 2, 9),
+      ),
+      createdAt: DateTime(2025, 2, 2).toIso8601String(),
+      updatedAt: DateTime(2025, 2, 9).toIso8601String(),
       description: '桌面、花瓶、阳光和一些微小瞬间，节奏更轻，也更适合原型展示。',
       style: PhotoStyle.sunlitRoom,
       photos: <PhotoData>[
@@ -3542,42 +3575,34 @@ class _ShelfScene extends StatelessWidget {
                                 final double delta = index - currentPage;
                                 final double scale = (1 - (delta.abs() * 0.10))
                                     .clamp(0.78, 1.0);
-                                final double angle = delta * 0.16;
                                 final bool active = delta.abs() < 0.5;
 
                                 return Transform.translate(
                                   offset: Offset(delta * -6, 0),
                                   child: Transform.scale(
                                     scale: scale,
-                                    child: Transform(
-                                      alignment: Alignment.bottomCenter,
-                                      transform: Matrix4.identity()
-                                        ..setEntry(3, 2, 0.001)
-                                        ..rotateY(angle),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute<void>(
-                                              builder: (BuildContext context) {
-                                                return AlbumDetailPage(
-                                                  album: album,
-                                                  albums: albums,
-                                                  onAlbumChanged:
-                                                      onAlbumChanged,
-                                                  onAlbumsChanged:
-                                                      onAlbumsChanged,
-                                                  onPhotosTrashed:
-                                                      onPhotosTrashed,
-                                                );
-                                              },
-                                            ),
-                                          );
-                                        },
-                                        child: _MobileFocusedAlbumStage(
-                                          album: album,
-                                          active: active,
-                                          onAlbumChanged: onAlbumChanged,
-                                        ),
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute<void>(
+                                            builder: (BuildContext context) {
+                                              return AlbumDetailPage(
+                                                album: album,
+                                                albums: albums,
+                                                onAlbumChanged: onAlbumChanged,
+                                                onAlbumsChanged:
+                                                    onAlbumsChanged,
+                                                onPhotosTrashed:
+                                                    onPhotosTrashed,
+                                              );
+                                            },
+                                          ),
+                                        );
+                                      },
+                                      child: _MobileFocusedAlbumStage(
+                                        album: album,
+                                        active: active,
+                                        onAlbumChanged: onAlbumChanged,
                                       ),
                                     ),
                                   ),
@@ -3843,12 +3868,10 @@ class _ShelfScene extends StatelessWidget {
       return;
     }
     final DateTime now = DateTime.now();
-    final String monthText = '${now.year}年${now.month}月';
     final String albumId = 'album-${now.microsecondsSinceEpoch}';
     PhotoData? coverPhoto;
     final XFile? image = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      imageQuality: 95,
     );
     if (image != null) {
       final String storedPath = await LocalAlbumStore.persistPickedImage(
@@ -3873,7 +3896,12 @@ class _ShelfScene extends StatelessWidget {
       AlbumData(
         id: albumId,
         title: result.name.trim(),
-        subtitle: '${coverPhoto == null ? 0 : 1} 张照片 · $monthText',
+        subtitle: buildAlbumSubtitle(
+          photoCount: coverPhoto == null ? 0 : 1,
+          updatedAt: now,
+        ),
+        createdAt: now.toIso8601String(),
+        updatedAt: now.toIso8601String(),
         description: result.description.trim().isEmpty
             ? coverPhoto == null
                   ? '新建相册，等待你继续添加照片和文字。'
@@ -4612,17 +4640,10 @@ class _DesktopAlbumSpineCard extends StatelessWidget {
     final double notchHeight = compact ? 3 : 5;
     final double titleSize = compact ? 14 : 18;
     final String verticalTitle = album.title.characters.join('\n');
-    final List<String> subtitleParts = album.subtitle.split('·');
-    final String rawDateLabel = subtitleParts.length > 1
-        ? subtitleParts.last.trim()
-        : album.subtitle.trim();
-    final RegExp yearMonthPattern = RegExp(r'(\d{4})年\s*(\d{1,2})月');
-    final RegExpMatch? yearMonthMatch = yearMonthPattern.firstMatch(
-      rawDateLabel,
-    );
-    final String dateLabel = yearMonthMatch == null
-        ? rawDateLabel
-        : '${yearMonthMatch.group(1)} · ${yearMonthMatch.group(2)}';
+    final DateTime updatedAt =
+        DateTime.tryParse(album.updatedAt) ?? DateTime.now();
+    final String dateLabel =
+        '${updatedAt.year} · ${updatedAt.month.toString().padLeft(2, '0')}';
     final double dateBottom = math.max(12, (height / 8) - 10);
     final double dateSize = compact ? 10 : 12;
     final double coverThumbSize = math.max(40, width - 10);
@@ -5004,19 +5025,19 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                   : const Icon(Icons.add_rounded),
             ),
       body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            isDesktop ? 22 : 14,
-            8,
-            isDesktop ? 22 : 14,
-            _isSelectionMode && !isDesktop ? 88 : 16,
-          ),
-          child: Column(
-            children: <Widget>[
-              Stack(
-                children: <Widget>[
-                  isDesktop
-                      ? Container(
+        child: isDesktop
+            ? Padding(
+                padding: EdgeInsets.fromLTRB(
+                  22,
+                  8,
+                  22,
+                  16,
+                ),
+                child: Column(
+                  children: <Widget>[
+                    Stack(
+                      children: <Widget>[
+                        Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(3),
                           decoration: BoxDecoration(
@@ -5031,61 +5052,124 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                                   height: 1.55,
                                 ),
                           ),
-                        )
-                      : _buildMobileAlbumHeader(context),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: _showDebugSectionFrames
-                              ? Border.all(
-                                  color: const Color(0xFFE53935),
-                                  width: 2,
-                                )
-                              : null,
-                          borderRadius: BorderRadius.circular(5),
                         ),
-                      ),
-                    ),
-                  ),
-                  const _SectionMarker(number: 5),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Expanded(
-                child: Stack(
-                  children: <Widget>[
-                    MasonryPhotoGrid(
-                      album: _album,
-                      onAlbumChanged: _replaceAlbum,
-                      onPhotosTrashed: widget.onPhotosTrashed,
-                      selectionMode: _isSelectionMode,
-                      selectedPhotoIds: _selectedPhotoIds,
-                      onToggleSelection: _togglePhotoSelection,
-                      onStartSelection: _startSelection,
-                    ),
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            border: _showDebugSectionFrames
-                                ? Border.all(
-                                    color: const Color(0xFFE53935),
-                                    width: 2,
-                                  )
-                                : null,
-                            borderRadius: BorderRadius.circular(5),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: _showDebugSectionFrames
+                                    ? Border.all(
+                                        color: const Color(0xFFE53935),
+                                        width: 2,
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                            ),
                           ),
                         ),
+                        const _SectionMarker(number: 5),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Expanded(
+                      child: Stack(
+                        children: <Widget>[
+                          MasonryPhotoGrid(
+                            album: _album,
+                            onAlbumChanged: _replaceAlbum,
+                            onPhotosTrashed: widget.onPhotosTrashed,
+                            selectionMode: _isSelectionMode,
+                            selectedPhotoIds: _selectedPhotoIds,
+                            onToggleSelection: _togglePhotoSelection,
+                            onStartSelection: _startSelection,
+                          ),
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  border: _showDebugSectionFrames
+                                      ? Border.all(
+                                          color: const Color(0xFFE53935),
+                                          width: 2,
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const _SectionMarker(number: 6),
+                        ],
                       ),
                     ),
-                    const _SectionMarker(number: 6),
+                  ],
+                ),
+              )
+            : SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  14,
+                  8,
+                  14,
+                  _isSelectionMode ? 88 : 16,
+                ),
+                child: Column(
+                  children: <Widget>[
+                    Stack(
+                      children: <Widget>[
+                        _buildMobileAlbumHeader(context),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: _showDebugSectionFrames
+                                    ? Border.all(
+                                        color: const Color(0xFFE53935),
+                                        width: 2,
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const _SectionMarker(number: 5),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Stack(
+                      children: <Widget>[
+                        MasonryPhotoGrid(
+                          album: _album,
+                          onAlbumChanged: _replaceAlbum,
+                          onPhotosTrashed: widget.onPhotosTrashed,
+                          selectionMode: _isSelectionMode,
+                          selectedPhotoIds: _selectedPhotoIds,
+                          onToggleSelection: _togglePhotoSelection,
+                          onStartSelection: _startSelection,
+                          scrollable: false,
+                        ),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: _showDebugSectionFrames
+                                    ? Border.all(
+                                        color: const Color(0xFFE53935),
+                                        width: 2,
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const _SectionMarker(number: 6),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -5220,71 +5304,47 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     widget.onAlbumChanged(updatedAlbum);
   }
 
-  Future<void> _pickAlbumCover() async {
-    final String? coverPhotoId = await _ShelfScene._showAlbumCoverPickerDialog(
-      context,
-      _album,
-    );
-    if (!mounted || coverPhotoId == null) {
-      return;
-    }
-    final AlbumData updatedAlbum = _album.copyWith(coverPhotoId: coverPhotoId);
-    setState(() {
-      _album = updatedAlbum;
-    });
-    widget.onAlbumChanged(updatedAlbum);
-  }
-
   Widget _buildMobileAlbumHeader(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final PrototypeThemeTokens tokens =
         theme.extension<PrototypeThemeTokens>()!;
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color stageColor = tokens.surface.withValues(alpha: isDark ? 0.95 : 0.93);
+    final Color stageColor =
+        tokens.surface.withValues(alpha: isDark ? 0.95 : 0.93);
     final Color borderColor = tokens.border;
     final Color shadowColor = isDark
         ? Colors.black.withValues(alpha: 0.22)
         : const Color(0x12000000);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: stageColor,
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: borderColor),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: shadowColor,
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: <Widget>[
-          SizedBox(
-            height: 190,
-            child: _AlbumTextEditorPane(
-              album: _album,
-              compact: true,
-              isEditing: _isEditingAlbumText,
-              titleController: _titleController,
-              descriptionController: _descriptionController,
-              onStartEditing: _startEditingAlbumText,
-              onCancel: _cancelEditingAlbumText,
-              onSave: _saveEditingAlbumText,
+    return IntrinsicHeight(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: stageColor,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: borderColor),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: shadowColor,
+              blurRadius: 18,
+              offset: const Offset(0, 10),
             ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton.filledTonal(
-              tooltip: '编辑封面',
-              onPressed: _pickAlbumCover,
-              icon: const Icon(Icons.edit_outlined, size: 18),
-            ),
-          ),
-        ],
+          ],
+        ),
+        child: _AlbumTextEditorPane(
+          album: _album,
+          compact: true,
+          isEditing: _isEditingAlbumText,
+          titleController: _titleController,
+          descriptionController: _descriptionController,
+          onStartEditing: _startEditingAlbumText,
+          onCancel: _cancelEditingAlbumText,
+          onSave: _saveEditingAlbumText,
+          showTitle: false,
+          showSubtitle: false,
+          showDivider: false,
+          expandBody: false,
+        ),
       ),
     );
   }
@@ -5443,7 +5503,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       targetAlbum = AlbumData(
         id: 'album-${now.microsecondsSinceEpoch}',
         title: newAlbumName,
-        subtitle: '${selectedPhotos.length} 张照片 · ${now.year}年${now.month}月',
+        subtitle: buildAlbumSubtitle(
+          photoCount: selectedPhotos.length,
+          updatedAt: now,
+        ),
+        createdAt: now.toIso8601String(),
+        updatedAt: now.toIso8601String(),
         description: '',
         style: _album.style,
         photos: const <PhotoData>[],
@@ -5681,6 +5746,7 @@ class MasonryPhotoGrid extends StatelessWidget {
     required this.selectedPhotoIds,
     required this.onToggleSelection,
     required this.onStartSelection,
+    this.scrollable = true,
     super.key,
   });
 
@@ -5691,6 +5757,7 @@ class MasonryPhotoGrid extends StatelessWidget {
   final Set<String> selectedPhotoIds;
   final ValueChanged<PhotoData> onToggleSelection;
   final ValueChanged<PhotoData> onStartSelection;
+  final bool scrollable;
 
   @override
   Widget build(BuildContext context) {
@@ -5721,54 +5788,56 @@ class MasonryPhotoGrid extends StatelessWidget {
           heights[lane] += _itemHeight(photo, itemWidth) + gap;
         }
 
-        return SingleChildScrollView(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: List<Widget>.generate(columns, (int column) {
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: column == 0 ? 0 : gap),
-                  child: Column(
-                    children: lanes[column].map((PhotoData photo) {
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: gap),
-                        child: _PhotoTile(
-                          photo: photo,
-                          width: itemWidth,
-                          selectionMode: selectionMode,
-                          selected: selectedPhotoIds.contains(photo.id),
-                          selectedBorderColor: const Color(0xFFFF3B30),
-                          selectedBorderWidth: 2,
-                          showSelectionCheckmark: false,
-                          onTap: () {
-                            if (selectionMode) {
-                              onToggleSelection(photo);
-                              return;
-                            }
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (BuildContext context) {
-                                  return PhotoDetailPage(
-                                    album: album,
-                                    photos: album.photos,
-                                    initialIndex: album.photos.indexOf(photo),
-                                    onAlbumChanged: onAlbumChanged,
-                                    onPhotosTrashed: onPhotosTrashed,
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                          onLongPress: () => onStartSelection(photo),
-                        ),
-                      );
-                    }).toList(),
-                  ),
+        final Widget grid = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: List<Widget>.generate(columns, (int column) {
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: column == 0 ? 0 : gap),
+                child: Column(
+                  children: lanes[column].map((PhotoData photo) {
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: gap),
+                      child: _PhotoTile(
+                        photo: photo,
+                        width: itemWidth,
+                        selectionMode: selectionMode,
+                        selected: selectedPhotoIds.contains(photo.id),
+                        selectedBorderColor: const Color(0xFFFF3B30),
+                        selectedBorderWidth: 2,
+                        showSelectionCheckmark: false,
+                        onTap: () {
+                          if (selectionMode) {
+                            onToggleSelection(photo);
+                            return;
+                          }
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (BuildContext context) {
+                                return PhotoDetailPage(
+                                  album: album,
+                                  photos: album.photos,
+                                  initialIndex: album.photos.indexOf(photo),
+                                  onAlbumChanged: onAlbumChanged,
+                                  onPhotosTrashed: onPhotosTrashed,
+                                );
+                              },
+                            ),
+                          );
+                        },
+                        onLongPress: () => onStartSelection(photo),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              );
-            }),
-          ),
+              ),
+            );
+          }),
         );
+        if (!scrollable) {
+          return grid;
+        }
+        return SingleChildScrollView(child: grid);
       },
     );
   }
@@ -6038,7 +6107,6 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
   Future<void> _pickImage(BuildContext context) async {
     final XFile? image = await _picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 95,
     );
     if (!mounted || image == null) {
       return;
@@ -6125,6 +6193,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   late int _index;
   late List<PhotoData> _photos;
   late final FocusNode _pageFocusNode;
+  late final FocusNode _noteEditorFocusNode;
+  late final ScrollController _notePanelScrollController;
   late TextEditingController _titleController;
   late TextEditingController _noteController;
   late TextEditingController _dateController;
@@ -6133,7 +6203,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   Offset _panOffset = Offset.zero;
   double _noteFontSize = 16;
   double _textPanelFraction = 0.30;
-  bool _isEditingDetails = false;
+  bool _isEditingTitle = false;
+  bool _isEditingNote = false;
   bool _textPanelCollapsed = false;
 
   PhotoData get photo => _photos[_index];
@@ -6144,6 +6215,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     _photos = List<PhotoData>.from(widget.photos);
     _index = widget.initialIndex;
     _pageFocusNode = FocusNode(debugLabel: 'photo-detail-page');
+    _noteEditorFocusNode = FocusNode(debugLabel: 'photo-detail-note-editor');
+    _notePanelScrollController = ScrollController();
     _titleController = TextEditingController(text: photo.title);
     _noteController = TextEditingController(text: photo.note);
     _dateController = TextEditingController(text: photo.date);
@@ -6157,6 +6230,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   @override
   void dispose() {
     _pageFocusNode.dispose();
+    _noteEditorFocusNode.dispose();
+    _notePanelScrollController.dispose();
     _titleController.dispose();
     _noteController.dispose();
     _dateController.dispose();
@@ -6181,6 +6256,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       onZoomChanged: _applyDetailZoom,
       toolbar: _buildToolbar(),
       textPanel: _buildTextPanel(),
+      focusedNotePanel: _buildFocusedNotePanel(),
       textPanelVisible: !_textPanelCollapsed,
       onExpandTextPanel: () {
         setState(() {
@@ -6194,6 +6270,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
           _textPanelFraction = value.clamp(0.22, 0.42);
         });
       },
+      focusNoteEditor: !isDesktop && _isEditingNote,
     );
 
     return Scaffold(
@@ -6241,79 +6318,39 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
           focusNode: _pageFocusNode,
           autofocus: true,
           onKeyEvent: _handlePageKeyEvent,
-              child: isDesktop
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
-                      child: Stack(
-                        children: <Widget>[
-                          detailContent,
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  border: _showDebugSectionFrames
-                                      ? Border.all(
-                                          color: const Color(0xFFE53935),
-                                          width: 2,
-                                        )
-                                      : null,
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const _SectionMarker(number: 7),
-                        ],
-                      ),
-                    )
+          child: isDesktop
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+                  child: detailContent,
+                )
               : Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: double.infinity),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
-                      child: Stack(
-                        children: <Widget>[
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color:
-                                  tokens?.surface ??
-                                  Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(5),
-                              border: Border.all(
-                                color:
-                                    tokens?.border ??
-                                    Theme.of(context).dividerColor,
-                              ),
-                              boxShadow: <BoxShadow>[
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.10),
-                                  blurRadius: 18,
-                                  offset: Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: detailContent,
-                            ),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color:
+                              tokens?.surface ??
+                              Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(
+                            color:
+                                tokens?.border ??
+                                Theme.of(context).dividerColor,
                           ),
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  border: _showDebugSectionFrames
-                                      ? Border.all(
-                                          color: const Color(0xFFE53935),
-                                          width: 2,
-                                        )
-                                      : null,
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                              ),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.10),
+                              blurRadius: 18,
+                              offset: Offset(0, 10),
                             ),
-                          ),
-                          const _SectionMarker(number: 7),
-                        ],
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: detailContent,
+                        ),
                       ),
                     ),
                   ),
@@ -6378,12 +6415,6 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
           _rotationTurns += 0.25;
         });
       },
-      onZoomIn: () {
-        _applyDetailZoom((_zoom + 0.2).clamp(1.0, 2.0));
-      },
-      onZoomOut: () {
-        _applyDetailZoom((_zoom - 0.2).clamp(1.0, 2.0));
-      },
     );
   }
 
@@ -6403,19 +6434,45 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
           child: _PhotoTextPanel(
             photo: photo,
             compact: photo.orientation == PhotoOrientation.portrait,
-            isEditing: _isEditingDetails,
+            isEditingTitle: _isEditingTitle,
+            isEditingNote: _isEditingNote,
             titleController: _titleController,
             noteController: _noteController,
+            noteFocusNode: _noteEditorFocusNode,
             dateController: _dateController,
+            notePanelScrollController: _notePanelScrollController,
             noteFontSize: _noteFontSize,
-            onEdit: () {
+            onEditTitle: () {
               setState(() {
-                _isEditingDetails = true;
+                _isEditingTitle = true;
+                _isEditingNote = false;
               });
             },
-            onCancel: () {
+            onEditNote: () {
               setState(() {
-                _resetEditingState();
+                _isEditingNote = true;
+                _isEditingTitle = false;
+              });
+              if (Theme.of(context).platform == TargetPlatform.android) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) {
+                    return;
+                  }
+                  _noteEditorFocusNode.requestFocus();
+                  _noteController.selection = TextSelection.collapsed(
+                    offset: _noteController.text.length,
+                  );
+                });
+              }
+            },
+            onCancelTitle: () {
+              setState(() {
+                _cancelTitleEditing();
+              });
+            },
+            onCancelNote: () {
+              setState(() {
+                _cancelNoteEditing();
               });
             },
             onPickDate: _pickDate,
@@ -6429,7 +6486,9 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                 _noteFontSize = (_noteFontSize - 1).clamp(13.0, 22.0);
               });
             },
-            onSave: _savePhotoDetails,
+            onSaveTitle: _savePhotoTitle,
+            onSaveNote: _savePhotoNote,
+            showNoteOnly: false,
           ),
         ),
         Align(
@@ -6448,9 +6507,58 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     );
   }
 
+  Widget _buildFocusedNotePanel() {
+    return _PhotoTextPanel(
+      photo: photo,
+      compact: photo.orientation == PhotoOrientation.portrait,
+      isEditingTitle: false,
+      isEditingNote: _isEditingNote,
+      titleController: _titleController,
+      noteController: _noteController,
+      noteFocusNode: _noteEditorFocusNode,
+      dateController: _dateController,
+      notePanelScrollController: _notePanelScrollController,
+      noteFontSize: _noteFontSize,
+      onEditTitle: () {},
+      onEditNote: () {},
+      onCancelTitle: () {},
+      onCancelNote: () {
+        setState(() {
+          _cancelNoteEditing();
+        });
+      },
+      onPickDate: _pickDate,
+      onIncreaseFont: () {
+        setState(() {
+          _noteFontSize = (_noteFontSize + 1).clamp(13.0, 22.0);
+        });
+      },
+      onDecreaseFont: () {
+        setState(() {
+          _noteFontSize = (_noteFontSize - 1).clamp(13.0, 22.0);
+        });
+      },
+      onSaveTitle: () {},
+      onSaveNote: _savePhotoNote,
+      showNoteOnly: true,
+    );
+  }
+
   void _resetEditingState() {
-    _isEditingDetails = false;
+    _isEditingTitle = false;
+    _isEditingNote = false;
     _titleController.text = photo.title;
+    _noteController.text = photo.note;
+    _dateController.text = photo.date;
+  }
+
+  void _cancelTitleEditing() {
+    _isEditingTitle = false;
+    _titleController.text = photo.title;
+  }
+
+  void _cancelNoteEditing() {
+    _isEditingNote = false;
     _noteController.text = photo.note;
     _dateController.text = photo.date;
   }
@@ -6477,29 +6585,41 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     });
   }
 
-  void _savePhotoDetails() {
+  void _savePhotoTitle() {
     final String nextTitle = _titleController.text.trim();
-    final String nextNote = _noteController.text.trim();
-    final String nextDateText = _dateController.text.trim();
     if (nextTitle.isEmpty) {
       showPrototypeMessage(context, '标题不能为空。');
       return;
     }
+    final PhotoData updatedPhoto = photo.copyWith(title: nextTitle);
+    setState(() {
+      _photos[_index] = updatedPhoto;
+      _isEditingTitle = false;
+      _titleController.text = updatedPhoto.title;
+    });
+    final AlbumData updatedAlbum = widget.album.copyWith(
+      photos: List<PhotoData>.from(_photos),
+    );
+    widget.onAlbumChanged(updatedAlbum);
+  }
+
+  void _savePhotoNote() {
+    final String nextNote = _noteController.text.trim();
+    final String nextDateText = _dateController.text.trim();
     final DateTime? parsedDate = parseChineseDate(nextDateText);
     if (parsedDate == null) {
       showPrototypeMessage(context, '日期格式应为 2024年10月2日。');
       return;
     }
     final PhotoData updatedPhoto = photo.copyWith(
-      title: nextTitle,
       note: nextNote,
       date: formatAlbumDate(parsedDate),
     );
     setState(() {
       _photos[_index] = updatedPhoto;
-      _isEditingDetails = false;
-      _titleController.text = updatedPhoto.title;
+      _isEditingNote = false;
       _dateController.text = updatedPhoto.date;
+      _noteController.text = updatedPhoto.note;
     });
     final AlbumData updatedAlbum = widget.album.copyWith(
       photos: List<PhotoData>.from(_photos),
@@ -6510,7 +6630,6 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   Future<void> _replaceCurrentPhoto() async {
     final XFile? image = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      imageQuality: 95,
     );
     if (!mounted || image == null) {
       return;
@@ -6549,7 +6668,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   }
 
   KeyEventResult _handlePageKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent || _isEditingDetails) {
+    if (event is! KeyDownEvent || _isEditingTitle || _isEditingNote) {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -6660,6 +6779,7 @@ class FullscreenPhotoPage extends StatefulWidget {
 }
 
 class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
+  static const double _maxFullscreenZoom = 5.0;
   late double _turns;
   late double _zoom;
   late Offset _panOffset;
@@ -6674,6 +6794,7 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDesktop = MediaQuery.of(context).size.width >= 900;
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       body: SafeArea(
@@ -6691,7 +6812,10 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                   });
                 },
                 onZoomChanged: _applyFullscreenZoom,
-                desktop: true,
+                desktop: isDesktop,
+                maxZoom: _maxFullscreenZoom,
+                mobilePinchSensitivity: 0.04,
+                lockPinchToViewportCenter: true,
                 backgroundColor: const Color(0xFF141414),
               ),
             ),
@@ -6734,7 +6858,9 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                       icon: Icons.remove_rounded,
                       label: '缩小',
                       onTap: () {
-                        _applyFullscreenZoom((_zoom - 0.2).clamp(0.8, 2.0));
+                        _applyFullscreenZoom(
+                          (_zoom - 0.2).clamp(0.8, _maxFullscreenZoom),
+                        );
                       },
                     ),
                   ),
@@ -6744,7 +6870,9 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                       icon: Icons.add_rounded,
                       label: '放大',
                       onTap: () {
-                        _applyFullscreenZoom((_zoom + 0.2).clamp(0.8, 2.0));
+                        _applyFullscreenZoom(
+                          (_zoom + 0.2).clamp(0.8, _maxFullscreenZoom),
+                        );
                       },
                     ),
                   ),
@@ -6789,11 +6917,13 @@ class _LandscapeDetailLayout extends StatelessWidget {
     required this.onZoomChanged,
     required this.toolbar,
     required this.textPanel,
+    required this.focusedNotePanel,
     required this.textPanelVisible,
     required this.onExpandTextPanel,
     required this.desktop,
     required this.textPanelFraction,
     required this.onTextPanelFractionChanged,
+    this.focusNoteEditor = false,
   });
 
   final PhotoData photo;
@@ -6804,15 +6934,27 @@ class _LandscapeDetailLayout extends StatelessWidget {
   final ValueChanged<double> onZoomChanged;
   final Widget toolbar;
   final Widget textPanel;
+  final Widget focusedNotePanel;
   final bool textPanelVisible;
   final VoidCallback onExpandTextPanel;
   final bool desktop;
   final double textPanelFraction;
   final ValueChanged<double> onTextPanelFractionChanged;
+  final bool focusNoteEditor;
 
   @override
   Widget build(BuildContext context) {
     if (!desktop) {
+      if (focusNoteEditor) {
+        return Column(
+          key: const ValueKey<String>('mobile-photo-detail-note-focus-layout'),
+          children: <Widget>[
+            Expanded(
+              child: focusedNotePanel,
+            ),
+          ],
+        );
+      }
       if (!textPanelVisible) {
         return Column(
           key: const ValueKey<String>('mobile-photo-detail-layout'),
@@ -6821,21 +6963,43 @@ class _LandscapeDetailLayout extends StatelessWidget {
               child: Stack(
                 children: <Widget>[
                   Positioned.fill(
-                    child: Column(
+                    child: Stack(
                       children: <Widget>[
-                        Expanded(
-                          child: _DetailImageFrame(
-                            photo: photo,
-                            zoom: zoom,
-                            turns: turns,
-                            panOffset: panOffset,
-                            onPanUpdate: onPanUpdate,
-                            onZoomChanged: onZoomChanged,
-                            desktop: desktop,
+                        Positioned.fill(
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: _DetailImageFrame(
+                                  photo: photo,
+                                  zoom: zoom,
+                                  turns: turns,
+                                  panOffset: panOffset,
+                                  onPanUpdate: onPanUpdate,
+                                  onZoomChanged: onZoomChanged,
+                                  desktop: desktop,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              toolbar,
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        toolbar,
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: _showDebugSectionFrames
+                                    ? Border.all(
+                                        color: const Color(0xFFE53935),
+                                        width: 2,
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const _SectionMarker(number: 7),
                       ],
                     ),
                   ),
@@ -6878,13 +7042,49 @@ class _LandscapeDetailLayout extends StatelessWidget {
                   bottom: 12,
                   child: toolbar,
                 ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: _showDebugSectionFrames
+                            ? Border.all(
+                                color: const Color(0xFFE53935),
+                                width: 2,
+                              )
+                            : null,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                  ),
+                ),
+                const _SectionMarker(number: 7),
               ],
             ),
           ),
           const SizedBox(height: 12),
           Expanded(
             flex: photo.orientation == PhotoOrientation.portrait ? 4 : 5,
-            child: textPanel,
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(child: textPanel),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: _showDebugSectionFrames
+                            ? Border.all(
+                                color: const Color(0xFFE53935),
+                                width: 2,
+                              )
+                            : null,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                  ),
+                ),
+                const _SectionMarker(number: 8),
+              ],
+            ),
           ),
         ],
       );
@@ -6914,6 +7114,22 @@ class _LandscapeDetailLayout extends StatelessWidget {
                       bottom: 12,
                       child: toolbar,
                     ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: _showDebugSectionFrames
+                                ? Border.all(
+                                    color: const Color(0xFFE53935),
+                                    width: 2,
+                                  )
+                                : null,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const _SectionMarker(number: 7),
                   ],
                 ),
               ),
@@ -6965,6 +7181,22 @@ class _LandscapeDetailLayout extends StatelessWidget {
                     bottom: 16,
                     child: toolbar,
                   ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const _SectionMarker(number: 7),
                 ],
               ),
             ),
@@ -6978,7 +7210,30 @@ class _LandscapeDetailLayout extends StatelessWidget {
                 },
               ),
             ),
-            SizedBox(width: textWidth, child: textPanel),
+            SizedBox(
+              width: textWidth,
+              child: Stack(
+                children: <Widget>[
+                  Positioned.fill(child: textPanel),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const _SectionMarker(number: 8),
+                ],
+              ),
+            ),
           ],
         );
       },
@@ -7083,6 +7338,9 @@ class _DetailImageFrame extends StatelessWidget {
     required this.onPanUpdate,
     this.onZoomChanged,
     required this.desktop,
+    this.maxZoom = 2.0,
+    this.mobilePinchSensitivity = 0.1,
+    this.lockPinchToViewportCenter = false,
     this.backgroundColor,
   });
 
@@ -7093,6 +7351,9 @@ class _DetailImageFrame extends StatelessWidget {
   final ValueChanged<Offset> onPanUpdate;
   final ValueChanged<double>? onZoomChanged;
   final bool desktop;
+  final double maxZoom;
+  final double mobilePinchSensitivity;
+  final bool lockPinchToViewportCenter;
   final Color? backgroundColor;
 
   @override
@@ -7109,6 +7370,9 @@ class _DetailImageFrame extends StatelessWidget {
           zoom: zoom,
           panOffset: panOffset,
         );
+        double gestureStartZoom = zoom;
+        Offset gestureStartPan = effectivePanOffset;
+        Offset gestureStartFocalPoint = Offset.zero;
         return DecoratedBox(
           decoration: BoxDecoration(
             color:
@@ -7127,25 +7391,47 @@ class _DetailImageFrame extends StatelessWidget {
                       }
                       final double nextZoom = (zoom +
                               (event.scrollDelta.dy < 0 ? 0.12 : -0.12))
-                          .clamp(desktop ? 0.8 : 1.0, 2.0);
+                          .clamp(desktop ? 0.8 : 1.0, maxZoom);
                       if (nextZoom == zoom) {
                         return;
                       }
                       onZoomChanged!(nextZoom);
                     },
               child: GestureDetector(
-                onPanUpdate: zoom > 1
-                    ? (DragUpdateDetails details) {
-                        onPanUpdate(
-                          _clampPhotoPanOffset(
-                            viewportSize: viewportSize,
-                            photoAspectRatio: photoAspectRatio,
-                            zoom: zoom,
-                            panOffset: effectivePanOffset + details.delta,
-                          ),
-                        );
-                      }
-                    : null,
+                behavior: HitTestBehavior.opaque,
+                onScaleStart: (ScaleStartDetails details) {
+                  gestureStartZoom = zoom;
+                  gestureStartPan = effectivePanOffset;
+                  gestureStartFocalPoint = details.focalPoint;
+                },
+                onScaleUpdate: (ScaleUpdateDetails details) {
+                  final double nextZoom = desktop
+                      ? (gestureStartZoom * details.scale).clamp(0.8, maxZoom)
+                      : (gestureStartZoom *
+                              math.pow(
+                                details.scale,
+                                mobilePinchSensitivity,
+                              ).toDouble())
+                          .clamp(1.0, maxZoom);
+                  if (onZoomChanged != null && nextZoom != zoom) {
+                    onZoomChanged!(nextZoom);
+                  }
+                  final Offset translatedOffset = details.pointerCount > 1
+                      ? (lockPinchToViewportCenter
+                            ? gestureStartPan
+                            : gestureStartPan +
+                                  (details.focalPoint - gestureStartFocalPoint))
+                      : effectivePanOffset + details.focalPointDelta;
+                  final Offset clampedOffset = _clampPhotoPanOffset(
+                    viewportSize: viewportSize,
+                    photoAspectRatio: photoAspectRatio,
+                    zoom: nextZoom,
+                    panOffset: translatedOffset,
+                  );
+                  if (details.pointerCount > 1 || nextZoom > 1 || zoom > 1) {
+                    onPanUpdate(clampedOffset);
+                  }
+                },
                 child: SizedBox.expand(
                   child: Transform.translate(
                     offset: effectivePanOffset,
@@ -7175,32 +7461,46 @@ class _PhotoTextPanel extends StatelessWidget {
   const _PhotoTextPanel({
     required this.photo,
     required this.compact,
-    required this.isEditing,
+    required this.isEditingTitle,
+    required this.isEditingNote,
     required this.titleController,
     required this.noteController,
+    required this.noteFocusNode,
     required this.dateController,
+    required this.notePanelScrollController,
     required this.noteFontSize,
-    required this.onEdit,
-    required this.onCancel,
+    required this.onEditTitle,
+    required this.onEditNote,
+    required this.onCancelTitle,
+    required this.onCancelNote,
     required this.onPickDate,
     required this.onIncreaseFont,
     required this.onDecreaseFont,
-    required this.onSave,
+    required this.onSaveTitle,
+    required this.onSaveNote,
+    this.showNoteOnly = false,
   });
 
   final PhotoData photo;
   final bool compact;
-  final bool isEditing;
+  final bool isEditingTitle;
+  final bool isEditingNote;
   final TextEditingController titleController;
   final TextEditingController noteController;
+  final FocusNode noteFocusNode;
   final TextEditingController dateController;
+  final ScrollController notePanelScrollController;
   final double noteFontSize;
-  final VoidCallback onEdit;
-  final VoidCallback onCancel;
+  final VoidCallback onEditTitle;
+  final VoidCallback onEditNote;
+  final VoidCallback onCancelTitle;
+  final VoidCallback onCancelNote;
   final VoidCallback onPickDate;
   final VoidCallback onIncreaseFont;
   final VoidCallback onDecreaseFont;
-  final VoidCallback onSave;
+  final VoidCallback onSaveTitle;
+  final VoidCallback onSaveNote;
+  final bool showNoteOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -7220,6 +7520,498 @@ class _PhotoTextPanel extends StatelessWidget {
     final Color codeBlockColor = isDark
         ? Color.alphaBlend(colorScheme.primary.withValues(alpha: 0.10), tokens.surface)
         : const Color(0xFFF4EADF);
+    final bool isAndroid = theme.platform == TargetPlatform.android;
+    final double noteLineHeight = noteFontSize * 1.7;
+    final double minNoteHeight = noteLineHeight * 10;
+    final Widget titleEditor = TextField(
+      controller: titleController,
+      decoration: InputDecoration(
+        labelText: '照片标题',
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 12,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(
+            color: Color(0xFFD8CABB),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(
+            color: Color(0xFFD8CABB),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.primary,
+            width: 1.2,
+          ),
+        ),
+      ),
+      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+        fontWeight: FontWeight.w700,
+        color: strongText,
+      ),
+    );
+    final Widget dateEditorRow = Row(
+      children: <Widget>[
+        Expanded(
+          child: TextField(
+            controller: dateController,
+            decoration: InputDecoration(
+              labelText: '照片日期',
+              hintText: '例如 2024年10月2日',
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 12,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(5),
+                borderSide: const BorderSide(
+                  color: Color(0xFFD8CABB),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(5),
+                borderSide: const BorderSide(
+                  color: Color(0xFFD8CABB),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(5),
+                borderSide: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 1.2,
+                ),
+              ),
+            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: bodyText,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        IconButton.filledTonal(
+          tooltip: '选择日期',
+          onPressed: onPickDate,
+          icon: const Icon(Icons.calendar_month_rounded),
+        ),
+      ],
+    );
+    final Widget noteEditor = TextField(
+      focusNode: noteFocusNode,
+      controller: noteController,
+      minLines: 10,
+      maxLines: null,
+      expands: false,
+      textAlignVertical: TextAlignVertical.top,
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.all(12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(
+            color: Color(0xFFD8CABB),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: const BorderSide(
+            color: Color(0xFFD8CABB),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.primary,
+            width: 1.2,
+          ),
+        ),
+      ),
+      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+        fontSize: noteFontSize,
+        height: 1.7,
+        color: bodyText,
+      ),
+    );
+    final Widget actionButtons = Align(
+      alignment: Alignment.centerRight,
+      child: Wrap(
+        spacing: 8,
+        children: <Widget>[
+          TextButton(
+            onPressed: onCancelNote,
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: onSaveNote,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(88, 44),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    final Widget titleSection = Stack(
+      children: <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.surface.withValues(alpha: isDark ? 0.72 : 0.55),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: tokens.border.withValues(alpha: 0.85)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        '照片标题',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: mutedText,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (isEditingTitle) ...<Widget>[
+                      IconButton(
+                        tooltip: '保存标题',
+                        onPressed: onSaveTitle,
+                        icon: const Icon(Icons.check_rounded, size: 20),
+                      ),
+                      IconButton(
+                        tooltip: '取消编辑标题',
+                        onPressed: onCancelTitle,
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                      ),
+                    ] else
+                      IconButton(
+                        tooltip: '编辑标题',
+                        onPressed: onEditTitle,
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: isEditingTitle
+                          ? titleEditor
+                          : Text(
+                              photo.title,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: strongText,
+                                  ),
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: isEditingTitle
+                          ? SizedBox(
+                              width: 176,
+                              child: dateEditorRow,
+                            )
+                          : Align(
+                              alignment: Alignment.topRight,
+                              child: Text(
+                                photo.date,
+                                textAlign: TextAlign.right,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: mutedText,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: _showDebugSectionFrames
+                    ? Border.all(
+                        color: const Color(0xFFE53935),
+                        width: 2,
+                      )
+                    : null,
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+          ),
+        ),
+        const _SectionMarker(number: 9),
+      ],
+    );
+    final Widget noteSection = Stack(
+      children: <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.surface.withValues(alpha: isDark ? 0.72 : 0.55),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: tokens.border.withValues(alpha: 0.85)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        '文本描述',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: strongText,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        _TinyTextScaleButton(
+                          label: 'A-',
+                          onTap: onDecreaseFont,
+                        ),
+                        const SizedBox(width: 6),
+                        _TinyTextScaleButton(
+                          label: 'A+',
+                          onTap: onIncreaseFont,
+                        ),
+                        if (!isEditingNote)
+                          IconButton(
+                            tooltip: '编辑正文',
+                            onPressed: onEditNote,
+                            icon: const Icon(Icons.edit_outlined, size: 20),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (!isAndroid)
+                  Expanded(
+                    child: isEditingNote
+                        ? Column(
+                            children: <Widget>[
+                              Expanded(child: noteEditor),
+                              const SizedBox(height: 10),
+                              actionButtons,
+                            ],
+                          )
+                        : SingleChildScrollView(
+                            child: MarkdownBody(
+                              data: photo.note,
+                              selectable: false,
+                              styleSheet: MarkdownStyleSheet.fromTheme(
+                                Theme.of(context),
+                              ).copyWith(
+                                p: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: bodyText,
+                                    ),
+                                h1: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                h2: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                h3: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                strong: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: strongText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                em: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: bodyText,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                blockquote: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      fontSize: noteFontSize,
+                                      height: 1.7,
+                                      color: mutedText,
+                                    ),
+                                code: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontSize: noteFontSize - 1,
+                                      color: strongText,
+                                    ),
+                                codeblockDecoration: BoxDecoration(
+                                  color: codeBlockColor,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                blockSpacing: 14,
+                              ),
+                            ),
+                          ),
+                  )
+                else
+                  Scrollbar(
+                    controller: notePanelScrollController,
+                    thumbVisibility: true,
+                    interactive: true,
+                    child: SingleChildScrollView(
+                      controller: notePanelScrollController,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: minNoteHeight + 24,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (isEditingNote) ...<Widget>[
+                              noteEditor,
+                              const SizedBox(height: 12),
+                              actionButtons,
+                            ] else
+                              ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: minNoteHeight,
+                                ),
+                                child: MarkdownBody(
+                                  data: photo.note,
+                                  selectable: false,
+                                  styleSheet: MarkdownStyleSheet.fromTheme(
+                                    Theme.of(context),
+                                  ).copyWith(
+                                    p: Theme.of(context).textTheme.bodyLarge
+                                        ?.copyWith(
+                                          fontSize: noteFontSize,
+                                          height: 1.7,
+                                          color: bodyText,
+                                        ),
+                                    h1: Theme.of(context).textTheme.headlineSmall
+                                        ?.copyWith(
+                                          color: strongText,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                    h2: Theme.of(context).textTheme.titleLarge
+                                        ?.copyWith(
+                                          color: strongText,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                    h3: Theme.of(context).textTheme.titleMedium
+                                        ?.copyWith(
+                                          color: strongText,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                    strong: Theme.of(context).textTheme.bodyLarge
+                                        ?.copyWith(
+                                          fontSize: noteFontSize,
+                                          height: 1.7,
+                                          color: strongText,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                    em: Theme.of(context).textTheme.bodyLarge
+                                        ?.copyWith(
+                                          fontSize: noteFontSize,
+                                          height: 1.7,
+                                          color: bodyText,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                    blockquote: Theme.of(context)
+                                        .textTheme
+                                        .bodyLarge
+                                        ?.copyWith(
+                                          fontSize: noteFontSize,
+                                          height: 1.7,
+                                          color: mutedText,
+                                        ),
+                                    code: Theme.of(context).textTheme.bodyMedium
+                                        ?.copyWith(
+                                          fontSize: noteFontSize - 1,
+                                          color: strongText,
+                                        ),
+                                    codeblockDecoration: BoxDecoration(
+                                      color: codeBlockColor,
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    blockSpacing: 14,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: _showDebugSectionFrames
+                    ? Border.all(
+                        color: const Color(0xFFE53935),
+                        width: 2,
+                      )
+                    : null,
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+          ),
+        ),
+        const _SectionMarker(number: 10),
+      ],
+    );
+    if (showNoteOnly) {
+      return noteSection;
+    }
+    final List<Widget> panelChildren = isAndroid && isEditingNote
+        ? <Widget>[
+            noteSection,
+            const SizedBox(height: 12),
+            titleSection,
+          ]
+        : <Widget>[
+            titleSection,
+            const SizedBox(height: 12),
+            isAndroid ? noteSection : Expanded(child: noteSection),
+          ];
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -7231,252 +8023,7 @@ class _PhotoTextPanel extends StatelessWidget {
         padding: EdgeInsets.all(compact ? 22 : 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: isEditing
-                      ? TextField(
-                          controller: titleController,
-                          decoration: InputDecoration(
-                            labelText: '照片标题',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(5),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFD8CABB),
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(5),
-                              borderSide: const BorderSide(
-                                color: Color(0xFFD8CABB),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(5),
-                              borderSide: BorderSide(
-                                color: Theme.of(context).colorScheme.primary,
-                                width: 1.2,
-                              ),
-                            ),
-                          ),
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: strongText,
-                              ),
-                        )
-                      : Text(
-                          photo.title,
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: strongText,
-                              ),
-                        ),
-                ),
-                IconButton(
-                  tooltip: isEditing ? '保存文字' : '编辑文字',
-                  onPressed: isEditing ? onSave : onEdit,
-                  icon: Icon(
-                    isEditing ? Icons.check_rounded : Icons.edit_outlined,
-                    size: 20,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (isEditing)
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      controller: dateController,
-                      decoration: InputDecoration(
-                        labelText: '照片日期',
-                        hintText: '例如 2024年10月2日',
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(5),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFD8CABB),
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(5),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFD8CABB),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(5),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 1.2,
-                          ),
-                        ),
-                      ),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: bodyText,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  IconButton.filledTonal(
-                    tooltip: '选择日期',
-                    onPressed: onPickDate,
-                    icon: const Icon(Icons.calendar_month_rounded),
-                  ),
-                ],
-              )
-            else
-              Text(
-                photo.date,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: mutedText,
-                ),
-              ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: <Widget>[
-                _TinyTextScaleButton(label: 'A-', onTap: onDecreaseFont),
-                const SizedBox(width: 6),
-                _TinyTextScaleButton(label: 'A+', onTap: onIncreaseFont),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: isEditing
-                  ? Column(
-                      children: <Widget>[
-                        Expanded(
-                          child: TextField(
-                            controller: noteController,
-                            maxLines: null,
-                            expands: true,
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.all(12),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(5),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFD8CABB),
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(5),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFD8CABB),
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(5),
-                                borderSide: BorderSide(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  width: 1.2,
-                                ),
-                              ),
-                            ),
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(
-                                  fontSize: noteFontSize,
-                                  height: 1.7,
-                                  color: bodyText,
-                                ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Wrap(
-                            spacing: 8,
-                            children: <Widget>[
-                              TextButton(
-                                onPressed: onCancel,
-                                child: const Text('取消'),
-                              ),
-                              ElevatedButton(
-                                onPressed: onSave,
-                                style: ElevatedButton.styleFrom(
-                                  minimumSize: const Size(88, 44),
-                                ),
-                                child: const Text('保存'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    )
-                  : SingleChildScrollView(
-                      child: MarkdownBody(
-                        data: photo.note,
-                        selectable: false,
-                        styleSheet: MarkdownStyleSheet.fromTheme(
-                          Theme.of(context),
-                        ).copyWith(
-                          p: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            fontSize: noteFontSize,
-                            height: 1.7,
-                            color: bodyText,
-                          ),
-                          h1: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(
-                                color: strongText,
-                                fontWeight: FontWeight.w700,
-                              ),
-                          h2: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: strongText,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          h3: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: strongText,
-                                fontWeight: FontWeight.w700,
-                              ),
-                          strong: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(
-                                fontSize: noteFontSize,
-                                height: 1.7,
-                                color: strongText,
-                                fontWeight: FontWeight.w700,
-                              ),
-                          em: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            fontSize: noteFontSize,
-                            height: 1.7,
-                            color: bodyText,
-                            fontStyle: FontStyle.italic,
-                          ),
-                          blockquote: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(
-                                fontSize: noteFontSize,
-                                height: 1.7,
-                                color: mutedText,
-                              ),
-                          code: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                fontSize: noteFontSize - 1,
-                                color: strongText,
-                              ),
-                          codeblockDecoration: BoxDecoration(
-                            color: codeBlockColor,
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          blockSpacing: 14,
-                        ),
-                      ),
-                    ),
-            ),
-          ],
+          children: panelChildren,
         ),
       ),
     );
@@ -7521,8 +8068,6 @@ class _DetailToolbar extends StatelessWidget {
     required this.canGoPrevious,
     required this.canGoNext,
     required this.onRotate,
-    required this.onZoomIn,
-    required this.onZoomOut,
   });
 
   final VoidCallback onPrevious;
@@ -7530,8 +8075,6 @@ class _DetailToolbar extends StatelessWidget {
   final bool canGoPrevious;
   final bool canGoNext;
   final VoidCallback onRotate;
-  final VoidCallback onZoomIn;
-  final VoidCallback onZoomOut;
 
   @override
   Widget build(BuildContext context) {
@@ -7543,16 +8086,6 @@ class _DetailToolbar extends StatelessWidget {
           label: '上一张',
           onTap: onPrevious,
           enabled: canGoPrevious,
-        ),
-        _ToolButton(
-          icon: Icons.zoom_out_rounded,
-          label: '缩小',
-          onTap: onZoomOut,
-        ),
-        _ToolButton(
-          icon: Icons.zoom_in_rounded,
-          label: '放大',
-          onTap: onZoomIn,
         ),
         _ToolButton(
           icon: Icons.rotate_right_rounded,
@@ -7827,6 +8360,10 @@ class _AlbumTextEditorPane extends StatelessWidget {
     required this.onStartEditing,
     required this.onCancel,
     required this.onSave,
+    this.showTitle = true,
+    this.showSubtitle = true,
+    this.showDivider = true,
+    this.expandBody = true,
   });
 
   final AlbumData album;
@@ -7837,6 +8374,10 @@ class _AlbumTextEditorPane extends StatelessWidget {
   final VoidCallback onStartEditing;
   final VoidCallback onCancel;
   final VoidCallback onSave;
+  final bool showTitle;
+  final bool showSubtitle;
+  final bool showDivider;
+  final bool expandBody;
 
   @override
   Widget build(BuildContext context) {
@@ -7855,102 +8396,122 @@ class _AlbumTextEditorPane extends StatelessWidget {
     final Color dividerColor = isDark
         ? colorScheme.secondary.withValues(alpha: 0.80)
         : const Color(0xFFC89A6A);
+    final Widget editButton = isEditing
+        ? IconButton(
+            tooltip: '保存相册信息',
+            onPressed: onSave,
+            icon: const Icon(Icons.check_rounded),
+          )
+        : IconButton(
+            tooltip: '编辑相册文字',
+            onPressed: onStartEditing,
+            icon: const Icon(Icons.edit_outlined),
+          );
+    final Widget body = isEditing
+        ? TextField(
+            controller: descriptionController,
+            maxLines: null,
+            minLines: expandBody ? null : 4,
+            expands: expandBody,
+            decoration: const InputDecoration(
+              hintText: '输入相册描述',
+              alignLabelWithHint: true,
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.all(12),
+            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: bodyColor,
+              height: compact ? 1.65 : 1.8,
+            ),
+          )
+        : Text(
+            album.description.trim().isEmpty ? '这个相册还没有描述。' : album.description,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: bodyColor,
+              height: compact ? 1.75 : 1.85,
+            ),
+          );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: expandBody ? MainAxisSize.max : MainAxisSize.min,
       children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Expanded(
-              child: isEditing
-                  ? TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: '输入相册名字',
-                        border: OutlineInputBorder(),
+        if (showTitle)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Expanded(
+                child: isEditing
+                    ? TextField(
+                        controller: titleController,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: '输入相册名字',
+                          border: OutlineInputBorder(),
+                        ),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: titleColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )
+                    : Text(
+                        album.title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: titleColor,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: titleColor,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    )
-                  : Text(
-                      album.title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: titleColor,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 8),
-            if (isEditing)
-              IconButton(
-                tooltip: '保存相册信息',
-                onPressed: onSave,
-                icon: const Icon(Icons.check_rounded),
-              )
-            else
-              IconButton(
-                tooltip: '编辑相册文字',
-                onPressed: onStartEditing,
-                icon: const Icon(Icons.edit_outlined),
               ),
-            if (isEditing)
-              IconButton(
-                tooltip: '取消编辑',
-                onPressed: onCancel,
-                icon: const Icon(Icons.close_rounded),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          album.subtitle,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: subtitleColor,
-          ),
-        ),
-        const SizedBox(height: 14),
-        Container(
-          width: 42,
-          height: 2,
-          color: dividerColor,
-        ),
-        const SizedBox(height: 14),
-        Expanded(
-          child: isEditing
-              ? TextField(
-                  controller: descriptionController,
-                  maxLines: null,
-                  expands: true,
-                  decoration: const InputDecoration(
-                    hintText: '输入相册描述',
-                    alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.all(12),
-                  ),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: bodyColor,
-                    height: compact ? 1.65 : 1.8,
-                  ),
-                )
-              : SingleChildScrollView(
-                  child: Text(
-                    album.description.trim().isEmpty
-                        ? '这个相册还没有描述。'
-                        : album.description,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: bodyColor,
-                      height: compact ? 1.75 : 1.85,
-                    ),
-                  ),
+              const SizedBox(width: 8),
+              editButton,
+              if (isEditing)
+                IconButton(
+                  tooltip: '取消编辑',
+                  onPressed: onCancel,
+                  icon: const Icon(Icons.close_rounded),
                 ),
-        ),
+            ],
+          )
+        else
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: <Widget>[
+              editButton,
+              if (isEditing)
+                IconButton(
+                  tooltip: '取消编辑',
+                  onPressed: onCancel,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+            ],
+          ),
+        if (showSubtitle) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            album.subtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: subtitleColor,
+            ),
+          ),
+        ],
+        if (showDivider) ...<Widget>[
+          const SizedBox(height: 14),
+          Container(
+            width: 42,
+            height: 2,
+            color: dividerColor,
+          ),
+          const SizedBox(height: 14),
+        ] else
+          const SizedBox(height: 8),
+        if (expandBody)
+          Expanded(child: body)
+        else
+          body,
       ],
     );
   }
+
 }
 
 class _MobileFocusedAlbumStage extends StatefulWidget {
@@ -9981,6 +10542,8 @@ class AlbumData {
     required this.id,
     required this.title,
     required this.subtitle,
+    required this.createdAt,
+    required this.updatedAt,
     required this.description,
     required this.style,
     required this.photos,
@@ -9993,6 +10556,8 @@ class AlbumData {
   final String id;
   final String title;
   final String subtitle;
+  final String createdAt;
+  final String updatedAt;
   final String description;
   final PhotoStyle style;
   final List<PhotoData> photos;
@@ -10005,6 +10570,8 @@ class AlbumData {
     String? id,
     String? title,
     String? subtitle,
+    String? createdAt,
+    String? updatedAt,
     String? description,
     PhotoStyle? style,
     List<PhotoData>? photos,
@@ -10013,13 +10580,33 @@ class AlbumData {
     double? coverOffsetX,
     double? coverOffsetY,
   }) {
+    final bool touched =
+        title != null ||
+        description != null ||
+        style != null ||
+        photos != null ||
+        !identical(coverPhotoId, _fieldUnset) ||
+        coverScale != null ||
+        coverOffsetX != null ||
+        coverOffsetY != null;
+    final List<PhotoData> nextPhotos = photos ?? this.photos;
+    final String nextUpdatedAt =
+        updatedAt ?? (touched ? DateTime.now().toIso8601String() : this.updatedAt);
     return AlbumData(
       id: id ?? this.id,
       title: title ?? this.title,
-      subtitle: subtitle ?? this.subtitle,
+      subtitle: subtitle ??
+          (touched
+              ? buildAlbumSubtitle(
+                  photoCount: nextPhotos.length,
+                  updatedAt: DateTime.tryParse(nextUpdatedAt) ?? DateTime.now(),
+                )
+              : this.subtitle),
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: nextUpdatedAt,
       description: description ?? this.description,
       style: style ?? this.style,
-      photos: photos ?? this.photos,
+      photos: nextPhotos,
       coverPhotoId: identical(coverPhotoId, _fieldUnset)
           ? this.coverPhotoId
           : coverPhotoId as String?,
@@ -10031,20 +10618,14 @@ class AlbumData {
 
   AlbumData withInsertedPhoto(PhotoData photo) {
     final List<PhotoData> nextPhotos = <PhotoData>[photo, ...photos];
-    return copyWith(
-      photos: nextPhotos,
-      subtitle: _updatedSubtitle(nextPhotos.length),
-    );
+    return copyWith(photos: nextPhotos);
   }
 
   AlbumData withInsertedPhotoAt(int index, PhotoData photo) {
     final List<PhotoData> nextPhotos = List<PhotoData>.from(photos);
     final int safeIndex = index.clamp(0, nextPhotos.length);
     nextPhotos.insert(safeIndex, photo);
-    return copyWith(
-      photos: nextPhotos,
-      subtitle: _updatedSubtitle(nextPhotos.length),
-    );
+    return copyWith(photos: nextPhotos);
   }
 
   AlbumData withUpdatedPhoto(PhotoData photo) {
@@ -10060,7 +10641,6 @@ class AlbumData {
         .toList();
     return copyWith(
       photos: nextPhotos,
-      subtitle: _updatedSubtitle(nextPhotos.length),
       coverPhotoId: coverPhotoId == photoId ? null : coverPhotoId,
     );
   }
@@ -10071,7 +10651,6 @@ class AlbumData {
         .toList();
     return copyWith(
       photos: nextPhotos,
-      subtitle: _updatedSubtitle(nextPhotos.length),
       coverPhotoId: photoIds.contains(coverPhotoId) ? null : coverPhotoId,
     );
   }
@@ -10095,6 +10674,8 @@ class AlbumData {
       'id': id,
       'title': title,
       'subtitle': subtitle,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
       'description': description,
       'style': style.name,
       'coverPhotoId': coverPhotoId,
@@ -10110,6 +10691,10 @@ class AlbumData {
       id: json['id'] as String,
       title: json['title'] as String,
       subtitle: json['subtitle'] as String,
+      createdAt:
+          json['createdAt'] as String? ?? DateTime.now().toIso8601String(),
+      updatedAt:
+          json['updatedAt'] as String? ?? DateTime.now().toIso8601String(),
       description: json['description'] as String,
       style: PhotoStyle.values.byName(json['style'] as String),
       coverPhotoId: json['coverPhotoId'] as String?,
@@ -10124,14 +10709,6 @@ class AlbumData {
     );
   }
 
-  String _updatedSubtitle(int count) {
-    final List<String> parts = subtitle.split('·');
-    if (parts.length < 2) {
-      return '$count 张照片';
-    }
-    final String suffix = parts.sublist(1).join('·').trim();
-    return '$count 张照片 · $suffix';
-  }
 }
 
 class PhotoData {

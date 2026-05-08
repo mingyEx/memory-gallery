@@ -3,6 +3,13 @@
 ## 2026-05-08
 
 ### What Was Completed
+- Added strict `createdAt / updatedAt` handling to album metadata so create, restore, move, and copy flows no longer rely on loose subtitle-only dates.
+- Changed image import to uncompressed local copying and removed Android-side quality downscaling from the main image-pick flows.
+- Removed the mobile single-album cover tilt so the focused cover no longer uses the old angled `rotateY` effect.
+- Reworked Android photo detail so the note area can be treated as its own debug-numbered subwindow, separate from the image and title regions.
+- Moved the photo date into the title subwindow, alongside the photo title instead of the note subwindow.
+- Increased the Android note editor to a 10-line minimum, made it content-driven, and added a draggable right-side scrollbar for long text.
+- Kept fullscreen mobile pinch/drag behavior on a separate Android-specific parameter set and rebuilt the Android release package after the interaction changes.
 - Synced the current Windows-side UI refinements onto Android while preserving the intended mobile-only layout rules:
   - photo detail stays `上图下文`
   - album detail stays `上文下图`
@@ -15,6 +22,7 @@
 
 ### Files Changed
 - `lib/main.dart`
+- `test/widget_test.dart`
 - `WORKLOG.md`
 - `README.md`
 - `docs/current_status.md`
@@ -22,8 +30,10 @@
 
 ### How To Verify
 - Run `flutter analyze --no-pub`
-- Run `flutter build windows`
 - Run `flutter build apk`
+- On Android, open photo detail and confirm the title/date live in subwindow `9` while note content lives in subwindow `10`.
+- On Android, enter note edit mode and confirm the note editor starts at 10 lines, grows with content, and shows a draggable scrollbar on the right.
+- On Android, open fullscreen photo mode and confirm pinch/drag uses the dedicated mobile interaction path.
 - On Android, open album detail and confirm subwindow 5 no longer shows a duplicated cover block.
 - On Android, switch to spine-wall mode and confirm the spines are visibly narrower than before.
 - In dark mode on both Windows and Android, open the move/copy target dialog and confirm the dialog title and album names are readable on dark backgrounds.
@@ -31,10 +41,11 @@
 
 ### Current Problem
 - The local untracked file `相册界面2.png` still has not been added to version control.
+- The generated `feature_check_report.html` is still local-only and not committed.
 - A few pages may still contain older hardcoded light-mode-first colors, so dark mode should get another focused cleanup pass.
 
 ### Next Suggestion
-- Do one more targeted dark-mode readability sweep, then update or repair widget tests once the UI behavior is stable enough to lock.
+- Validate the latest Android photo-detail editing and fullscreen gesture behavior on device, then update or repair widget tests once the UI behavior is stable enough to lock.
 
 ## 2026-05-07
 
