@@ -1,6 +1,9 @@
 # Current Status
 
 ## Completed This Round
+- Changed fullscreen photo viewing to a `cover`-style base display so entering fullscreen now feels like a system gallery: the image keeps its ratio, fills at least one screen axis, and may crop beyond the viewport edges.
+- Reworked the regular Android photo-detail image region (`subwindow 7`) away from the old fixed-height viewer box and toward a width-priority article-style image block that expands vertically with the image.
+- Turned debug-only red frames and top-right subwindow number tags back off for the default packaged UI.
 - Added strict `createdAt / updatedAt` album metadata handling so create, restore, move, and copy flows preserve real timestamps.
 - Switched image import to uncompressed local-file copying and removed Android-side `imageQuality` downscaling from the main import paths.
 - Removed the mobile single-album cover tilt so the first cover now sits perpendicular to the screen.
@@ -35,4 +38,4 @@
 - A few remaining screens still use older light-mode-first hardcoded colors; dark mode is improved, but another sweep is still worth doing.
 
 ## Suggested Next Step
-- Validate the latest Android compressed detail layout, `关于软件` dialog, launcher branding, and fullscreen pinch feel on a real device, then repair the outdated widget tests.
+- Validate the latest Android regular photo-detail `subwindow 7` height behavior and the new fullscreen `cover` default on a real device, then repair the outdated widget tests.

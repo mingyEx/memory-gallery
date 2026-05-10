@@ -1063,29 +1063,39 @@ Future<void> showPrototypeSettingsSheet(
       },
     );
   }
-  return showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    backgroundColor: tokens.surface.withValues(alpha: isDark ? 0.99 : 1),
-    builder: (BuildContext context) {
-      return SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: _PrototypeSettingsContent(
-              appearance: appearance,
-              onChanged: onChanged,
-              onExportDataPressed: onExportDataPressed,
-              onImportDataPressed: onImportDataPressed,
-              onCustomBackgroundPressed: onCustomBackgroundPressed,
-              onClearBackgroundPressed: onClearBackgroundPressed,
-              onAboutSoftwarePressed: onAboutSoftwarePressed,
-              desktop: false,
+  return Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (BuildContext context) {
+        final ScrollController scrollController = ScrollController();
+        return Scaffold(
+          backgroundColor: tokens.surface.withValues(alpha: isDark ? 0.99 : 1),
+          appBar: AppBar(
+            title: const Text('设置'),
+          ),
+          body: SafeArea(
+            child: Scrollbar(
+              controller: scrollController,
+              thumbVisibility: true,
+              interactive: true,
+              child: SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: _PrototypeSettingsContent(
+                  appearance: appearance,
+                  onChanged: onChanged,
+                  onExportDataPressed: onExportDataPressed,
+                  onImportDataPressed: onImportDataPressed,
+                  onCustomBackgroundPressed: onCustomBackgroundPressed,
+                  onClearBackgroundPressed: onClearBackgroundPressed,
+                  onAboutSoftwarePressed: onAboutSoftwarePressed,
+                  desktop: false,
+                ),
+              ),
             ),
           ),
-        ),
-      );
-    },
+        );
+      },
+    ),
   );
 }
 
@@ -2150,12 +2160,22 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
           : SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
                 child: _MobileSectionBar(
                   section: _section,
                   onSectionChanged: _setSection,
                   desktopViewMode: _desktopViewMode,
                   onAlbumModeToggle: _toggleDesktopViewMode,
+                  onSettingsTap: () => showPrototypeSettingsSheet(
+                    context,
+                    appearance: widget.appearance,
+                    onChanged: widget.onAppearanceChanged,
+                    onExportDataPressed: widget.onExportDataPressed,
+                    onImportDataPressed: widget.onImportDataPressed,
+                    onCustomBackgroundPressed: widget.onCustomBackgroundPressed,
+                    onClearBackgroundPressed: widget.onClearBackgroundPressed,
+                    onAboutSoftwarePressed: widget.onAboutSoftwarePressed,
+                  ),
                 ),
               ),
             ),
@@ -2707,21 +2727,24 @@ class _MobileSectionBar extends StatelessWidget {
     required this.onSectionChanged,
     required this.desktopViewMode,
     required this.onAlbumModeToggle,
+    required this.onSettingsTap,
   });
 
   final HomeSection section;
   final ValueChanged<HomeSection> onSectionChanged;
   final DesktopAlbumViewMode desktopViewMode;
   final VoidCallback onAlbumModeToggle;
+  final VoidCallback onSettingsTap;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       key: const ValueKey<String>('mobile-home-section-bar'),
-      padding: const EdgeInsets.all(6),
+      width: double.infinity,
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(0),
         border: Border.all(
           color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
         ),
@@ -2745,7 +2768,7 @@ class _MobileSectionBar extends StatelessWidget {
               },
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           Expanded(
             child: _MobileSectionButton(
               label: '收藏',
@@ -2756,13 +2779,22 @@ class _MobileSectionBar extends StatelessWidget {
               onTap: () => onSectionChanged(HomeSection.favorites),
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           Expanded(
             child: _MobileSectionButton(
               label: '回收站',
               icon: Icons.delete_sweep_rounded,
               selected: section == HomeSection.trash,
               onTap: () => onSectionChanged(HomeSection.trash),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _MobileSectionButton(
+              label: '设置',
+              icon: Icons.settings_outlined,
+              selected: false,
+              onTap: onSettingsTap,
             ),
           ),
         ],
@@ -2818,7 +2850,7 @@ class _MobileSectionButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(5),
       child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: selected
               ? selectedColor.withValues(alpha: 0.14)
@@ -2835,14 +2867,14 @@ class _MobileSectionButton extends StatelessWidget {
           children: <Widget>[
             Icon(
               icon,
-              size: 20,
+              size: 18,
               color: selected ? selectedColor : idleColor,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 color: selected ? selectedColor : idleColor,
               ),
@@ -2894,7 +2926,7 @@ class _SectionMarker extends StatelessWidget {
   }
 }
 
-const bool _showDebugSectionFrames = true;
+const bool _showDebugSectionFrames = false;
 
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
@@ -2926,10 +2958,10 @@ class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: <Widget>[
         ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: desktop ? 210 : 180),
+          constraints: BoxConstraints(maxWidth: desktop ? 210 : 220),
           child: TextFormField(
             initialValue: searchQuery,
             onChanged: onSearchChanged,
@@ -2951,7 +2983,7 @@ class _HomeHeader extends StatelessWidget {
                 context,
               ).colorScheme.surface.withValues(alpha: 0.94),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
                   color: Theme.of(
                     context,
@@ -2959,7 +2991,7 @@ class _HomeHeader extends StatelessWidget {
                 ),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
                   color: Theme.of(
                     context,
@@ -2967,7 +2999,7 @@ class _HomeHeader extends StatelessWidget {
                 ),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(
                   color: Theme.of(context).colorScheme.primary,
                   width: 1.1,
@@ -2987,40 +3019,8 @@ class _HomeHeader extends StatelessWidget {
             ),
           ),
           icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('创建相册'),
+          label: const Text('新相册'),
         ),
-        if (!desktop) ...<Widget>[
-          const SizedBox(width: 10),
-          IconButton(
-            onPressed: () => showPrototypeSettingsSheet(
-              context,
-              appearance: appearance,
-              onChanged: onAppearanceChanged,
-              onExportDataPressed: onExportDataPressed,
-              onImportDataPressed: onImportDataPressed,
-              onCustomBackgroundPressed: onCustomBackgroundPressed,
-              onClearBackgroundPressed: onClearBackgroundPressed,
-              onAboutSoftwarePressed: onAboutSoftwarePressed,
-            ),
-            style: IconButton.styleFrom(
-              minimumSize: const Size(38, 38),
-              padding: const EdgeInsets.all(8),
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.surface.withValues(alpha: 0.94),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(5),
-                side: BorderSide(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.14),
-                ),
-              ),
-            ),
-            icon: const Icon(Icons.settings_outlined, size: 18),
-            tooltip: '设置',
-          ),
-        ],
       ],
     );
   }
@@ -4431,7 +4431,6 @@ class _DesktopAlbumGridState extends State<_DesktopAlbumGrid> {
                 album: album,
                 compact: compact,
                 onTap: () => widget.onAlbumTap(album),
-                onEdit: () => widget.onAlbumEdit(album),
               );
             },
           ),
@@ -4446,13 +4445,11 @@ class _DesktopAlbumGridCard extends StatelessWidget {
     required this.album,
     required this.compact,
     required this.onTap,
-    required this.onEdit,
   });
 
   final AlbumData album;
   final bool compact;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -4493,30 +4490,6 @@ class _DesktopAlbumGridCard extends StatelessWidget {
                               const Color(0x1A000000),
                               const Color(0x8A1E140F),
                             ],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: compact ? 8 : 10,
-                        right: compact ? 8 : 10,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: onEdit,
-                            borderRadius: BorderRadius.circular(5),
-                            child: Ink(
-                              width: compact ? 30 : 34,
-                              height: compact ? 30 : 34,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.90),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.edit_outlined,
-                                size: compact ? 16 : 18,
-                                color: const Color(0xFF5A3E2A),
-                              ),
-                            ),
                           ),
                         ),
                       ),
@@ -5072,13 +5045,52 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
               tooltip: '复制',
               icon: const Icon(Icons.content_copy_rounded),
             )
-          else
+          else if (isDesktop)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: TextButton(
                 onPressed: _isImportingPhotos ? null : _importPhotosFromFiles,
                 child: Text(_isImportingPhotos ? '导入中...' : '添加照片'),
               ),
+            ),
+          if (!_isSelectionMode && !isDesktop)
+            PopupMenuButton<String>(
+              tooltip: '更多操作',
+              onSelected: (String value) {
+                if (value == 'edit') {
+                  _openMobileAlbumEditorPage();
+                }
+                if (value == 'change-cover') {
+                  _changeAlbumCover();
+                }
+                if (value == 'add-photos') {
+                  _importPhotosFromFiles();
+                }
+                if (value == 'delete-album') {
+                  _deleteAlbum();
+                }
+              },
+              itemBuilder: (BuildContext context) =>
+                  <PopupMenuEntry<String>>[
+                    const PopupMenuItem<String>(
+                      value: 'edit',
+                      child: Text('编辑'),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'change-cover',
+                      child: Text('修改封面'),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'add-photos',
+                      enabled: !_isImportingPhotos,
+                      child: Text(_isImportingPhotos ? '导入中...' : '添加照片'),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'delete-album',
+                      child: Text('删除相册'),
+                    ),
+                  ],
+              icon: const Icon(Icons.more_vert_rounded),
             ),
         ],
       ),
@@ -5383,6 +5395,38 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     widget.onAlbumChanged(updatedAlbum);
   }
 
+  Future<void> _openMobileAlbumEditorPage() async {
+    final _AlbumDetailEditResult? result =
+        await Navigator.of(context).push<_AlbumDetailEditResult>(
+      MaterialPageRoute<_AlbumDetailEditResult>(
+        builder: (BuildContext context) =>
+            _AlbumDetailEditPage(album: _album),
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    final AlbumData updatedAlbum = _album.copyWith(
+      title: result.title.isEmpty ? _album.title : result.title,
+      description: result.description,
+    );
+    _replaceAlbum(updatedAlbum);
+    showPrototypeMessage(context, '已更新相册信息');
+  }
+
+  Future<void> _changeAlbumCover() async {
+    final String? coverPhotoId = await _ShelfScene._showAlbumCoverPickerDialog(
+      context,
+      _album,
+    );
+    if (!mounted || coverPhotoId == null) {
+      return;
+    }
+    final AlbumData updatedAlbum = _album.copyWith(coverPhotoId: coverPhotoId);
+    _replaceAlbum(updatedAlbum);
+    showPrototypeMessage(context, '已修改相册封面');
+  }
+
   Widget _buildMobileAlbumHeader(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final PrototypeThemeTokens tokens =
@@ -5413,7 +5457,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
         child: _AlbumTextEditorPane(
           album: _album,
           compact: true,
-          isEditing: _isEditingAlbumText,
+          isEditing: false,
           titleController: _titleController,
           descriptionController: _descriptionController,
           onStartEditing: _startEditingAlbumText,
@@ -5423,6 +5467,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
           showSubtitle: false,
           showDivider: false,
           expandBody: false,
+          showEditControls: false,
         ),
       ),
     );
@@ -5535,6 +5580,56 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     widget.onAlbumChanged(updatedAlbum);
     widget.onPhotosTrashed(trashedEntries);
     showPrototypeMessage(context, '已移入回收站 ${deletedPhotos.length} 张照片');
+  }
+
+  Future<void> _deleteAlbum() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('删除相册'),
+          content: Text('确认删除“${_album.title}”吗？相册内照片会进入回收站。'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final List<TrashPhotoEntry> trashedEntries = _album.photos
+        .asMap()
+        .entries
+        .map((MapEntry<int, PhotoData> entry) {
+          return createTrashPhotoEntry(
+            album: _album,
+            photo: entry.value,
+            originalPhotoIndex: entry.key,
+          );
+        })
+        .toList();
+    final List<AlbumData> updatedAlbums = widget.albums
+        .where((AlbumData album) => album.id != _album.id)
+        .toList();
+
+    if (trashedEntries.isNotEmpty) {
+      widget.onPhotosTrashed(trashedEntries);
+    }
+    widget.onAlbumsChanged(updatedAlbums);
+    showPrototypeMessage(context, '已删除相册');
+    Navigator.of(context).pop();
   }
 
   Future<void> _moveSelectedPhotos() async {
@@ -6289,6 +6384,46 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
 
   PhotoData get photo => _photos[_index];
 
+  void _beginTitleEditing() {
+    setState(() {
+      _isEditingTitle = true;
+      _isEditingNote = false;
+    });
+  }
+
+  Future<void> _openPhotoEditorPage() async {
+    final _PhotoEditResult? result = await Navigator.of(context).push<_PhotoEditResult>(
+      MaterialPageRoute<_PhotoEditResult>(
+        builder: (BuildContext context) => _PhotoEditPage(
+          title: photo.title,
+          note: photo.note,
+          dateText: _resolvedPhotoDateText(photo),
+          noteFontSize: _noteFontSize,
+        ),
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    final PhotoData updatedPhoto = photo.copyWith(
+      title: result.title,
+      note: result.note,
+    );
+    setState(() {
+      _photos[_index] = updatedPhoto;
+      _titleController.text = updatedPhoto.title;
+      _noteController.text = updatedPhoto.note;
+      _dateController.text = _resolvedPhotoDateText(updatedPhoto);
+      _isEditingTitle = false;
+      _isEditingNote = false;
+    });
+    final AlbumData updatedAlbum = widget.album.copyWith(
+      photos: List<PhotoData>.from(_photos),
+    );
+    widget.onAlbumChanged(updatedAlbum);
+    showPrototypeMessage(context, '已更新照片内容');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -6352,6 +6487,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
         });
       },
       focusNoteEditor: !isDesktop && _isEditingNote,
+      onSwipePrevious: _index > 0 ? _goPrevious : null,
+      onSwipeNext: _index < _photos.length - 1 ? _goNext : null,
     );
 
     return Scaffold(
@@ -6383,6 +6520,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
                 MaterialPageRoute<void>(
                   builder: (BuildContext context) => FullscreenPhotoPage(
                     photo: photo,
+                    photos: _photos,
+                    initialIndex: _index,
                     initialTurns: _rotationTurns,
                     initialZoom: _zoom,
                     initialPanOffset: _panOffset,
@@ -6391,6 +6530,21 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
               );
             },
             icon: const Icon(Icons.fullscreen_rounded),
+          ),
+          PopupMenuButton<String>(
+            tooltip: '更多操作',
+            onSelected: (String value) {
+              if (value == 'edit') {
+                _openPhotoEditorPage();
+              }
+            },
+            itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'edit',
+                child: Text('编辑'),
+              ),
+            ],
+            icon: const Icon(Icons.more_vert_rounded),
           ),
         ],
       ),
@@ -6490,12 +6644,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       dateController: _dateController,
       notePanelScrollController: _notePanelScrollController,
       noteFontSize: _noteFontSize,
-      onEditTitle: () {
-        setState(() {
-          _isEditingTitle = true;
-          _isEditingNote = false;
-        });
-      },
+      onEditTitle: _beginTitleEditing,
       onEditNote: () {
         setState(() {
           _isEditingNote = true;
@@ -6544,14 +6693,13 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
         if (isDesktop) Expanded(child: panel) else panel,
         Align(
           alignment: Alignment.centerRight,
-          child: IconButton(
-            tooltip: '隐藏文字面板',
-            onPressed: () {
+          child: _TextPanelToggleButton(
+            collapsed: false,
+            onTap: () {
               setState(() {
                 _textPanelCollapsed = true;
               });
             },
-            icon: const Icon(Icons.chevron_right_rounded),
           ),
         ),
       ],
@@ -6827,6 +6975,8 @@ class FullscreenPhotoPage extends StatefulWidget {
     required this.initialTurns,
     required this.initialZoom,
     this.initialPanOffset = Offset.zero,
+    this.photos,
+    this.initialIndex = 0,
     super.key,
   });
 
@@ -6834,6 +6984,8 @@ class FullscreenPhotoPage extends StatefulWidget {
   final double initialTurns;
   final double initialZoom;
   final Offset initialPanOffset;
+  final List<PhotoData>? photos;
+  final int initialIndex;
 
   @override
   State<FullscreenPhotoPage> createState() => _FullscreenPhotoPageState();
@@ -6841,13 +6993,23 @@ class FullscreenPhotoPage extends StatefulWidget {
 
 class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
   static const double _maxFullscreenZoom = 5.0;
+  late List<PhotoData> _photos;
+  late int _index;
   late double _turns;
   late double _zoom;
   late Offset _panOffset;
 
+  PhotoData get _photo => _photos[_index];
+
   @override
   void initState() {
     super.initState();
+    _photos = widget.photos == null || widget.photos!.isEmpty
+        ? <PhotoData>[widget.photo]
+        : List<PhotoData>.from(widget.photos!);
+    _index = _photos.length == 1
+        ? 0
+        : widget.initialIndex.clamp(0, _photos.length - 1);
     _turns = widget.initialTurns;
     _zoom = widget.initialZoom;
     _panOffset = widget.initialPanOffset;
@@ -6863,7 +7025,7 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
           children: <Widget>[
             Positioned.fill(
               child: _DetailImageFrame(
-                photo: widget.photo,
+                photo: _photo,
                 zoom: _zoom,
                 turns: _turns,
                 panOffset: _panOffset,
@@ -6878,6 +7040,9 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                 mobilePinchSensitivity: 0.04,
                 lockPinchToViewportCenter: true,
                 backgroundColor: const Color(0xFF141414),
+                baseFit: BoxFit.cover,
+                onSwipePrevious: !isDesktop && _canGoPrevious ? _goPrevious : null,
+                onSwipeNext: !isDesktop && _canGoNext ? _goNext : null,
               ),
             ),
             Positioned(
@@ -6894,7 +7059,7 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
                   Expanded(
                     child: Center(
                       child: Text(
-                        widget.photo.title,
+                        _photo.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -6966,6 +7131,34 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
       }
     });
   }
+
+  bool get _canGoPrevious => _index > 0;
+
+  bool get _canGoNext => _index < _photos.length - 1;
+
+  void _goPrevious() {
+    if (!_canGoPrevious) {
+      return;
+    }
+    setState(() {
+      _index -= 1;
+      _turns = 0;
+      _zoom = 1;
+      _panOffset = Offset.zero;
+    });
+  }
+
+  void _goNext() {
+    if (!_canGoNext) {
+      return;
+    }
+    setState(() {
+      _index += 1;
+      _turns = 0;
+      _zoom = 1;
+      _panOffset = Offset.zero;
+    });
+  }
 }
 
 class _LandscapeDetailLayout extends StatelessWidget {
@@ -6986,6 +7179,8 @@ class _LandscapeDetailLayout extends StatelessWidget {
     required this.textPanelFraction,
     required this.onTextPanelFractionChanged,
     this.focusNoteEditor = false,
+    this.onSwipePrevious,
+    this.onSwipeNext,
   });
 
   final PhotoData photo;
@@ -7004,6 +7199,8 @@ class _LandscapeDetailLayout extends StatelessWidget {
   final double textPanelFraction;
   final ValueChanged<double> onTextPanelFractionChanged;
   final bool focusNoteEditor;
+  final VoidCallback? onSwipePrevious;
+  final VoidCallback? onSwipeNext;
 
   @override
   Widget build(BuildContext context) {
@@ -7040,10 +7237,10 @@ class _LandscapeDetailLayout extends StatelessWidget {
                                   onPanUpdate: onPanUpdate,
                                   onZoomChanged: onZoomChanged,
                                   desktop: desktop,
+                                  onSwipePrevious: onSwipePrevious,
+                                  onSwipeNext: onSwipeNext,
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              toolbar,
                             ],
                           ),
                         ),
@@ -7063,16 +7260,15 @@ class _LandscapeDetailLayout extends StatelessWidget {
                           ),
                         ),
                         const _SectionMarker(number: 7),
+                        Positioned(
+                          right: 8,
+                          bottom: 8,
+                          child: _TextPanelToggleButton(
+                            collapsed: true,
+                            onTap: onExpandTextPanel,
+                          ),
+                        ),
                       ],
-                    ),
-                  ),
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: IconButton(
-                      tooltip: '显示文字面板',
-                      onPressed: onExpandTextPanel,
-                      icon: const Icon(Icons.chevron_left_rounded),
                     ),
                   ),
                 ],
@@ -7083,9 +7279,6 @@ class _LandscapeDetailLayout extends StatelessWidget {
       }
       return LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
-          final double imageHeight =
-              constraints.maxHeight *
-              (photo.orientation == PhotoOrientation.portrait ? 0.52 : 0.46);
           return Scrollbar(
             controller: mobileScrollController,
             thumbVisibility: true,
@@ -7098,69 +7291,52 @@ class _LandscapeDetailLayout extends StatelessWidget {
                   key: const ValueKey<String>('mobile-photo-detail-layout'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    SizedBox(
-                      height: imageHeight,
-                      child: Stack(
-                        children: <Widget>[
-                          Positioned.fill(
-                            child: _DetailImageFrame(
-                              photo: photo,
-                              zoom: zoom,
-                              turns: turns,
-                              panOffset: panOffset,
-                              onPanUpdate: onPanUpdate,
-                              onZoomChanged: onZoomChanged,
-                              desktop: desktop,
-                            ),
-                          ),
-                          Positioned(
-                            left: 12,
-                            right: 12,
-                            bottom: 12,
-                            child: toolbar,
-                          ),
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  border: _showDebugSectionFrames
-                                      ? Border.all(
-                                          color: const Color(0xFFE53935),
-                                          width: 2,
-                                        )
-                                      : null,
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
+                    Stack(
+                      children: <Widget>[
+                        _WidthPriorityPhotoFrame(
+                          photo: photo,
+                          turns: turns,
+                          onSwipePrevious: onSwipePrevious,
+                          onSwipeNext: onSwipeNext,
+                        ),
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: _showDebugSectionFrames
+                                    ? Border.all(
+                                        color: const Color(0xFFE53935),
+                                        width: 2,
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(5),
                               ),
                             ),
                           ),
-                          const _SectionMarker(number: 7),
-                        ],
-                      ),
+                        ),
+                        const _SectionMarker(number: 7),
+                      ],
                     ),
-                    Transform.translate(
-                      offset: const Offset(0, -10),
-                      child: Stack(
-                        children: <Widget>[
-                          textPanel,
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  border: _showDebugSectionFrames
-                                      ? Border.all(
-                                          color: const Color(0xFFE53935),
-                                          width: 2,
-                                        )
-                                      : null,
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
+                    Stack(
+                      children: <Widget>[
+                        textPanel,
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: _showDebugSectionFrames
+                                    ? Border.all(
+                                        color: const Color(0xFFE53935),
+                                        width: 2,
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(5),
                               ),
                             ),
                           ),
-                          const _SectionMarker(number: 8),
-                        ],
-                      ),
+                        ),
+                        const _SectionMarker(number: 8),
+                      ],
                     ),
                   ],
                 ),
@@ -7187,13 +7363,9 @@ class _LandscapeDetailLayout extends StatelessWidget {
                         onPanUpdate: onPanUpdate,
                         onZoomChanged: onZoomChanged,
                         desktop: desktop,
+                        onSwipePrevious: onSwipePrevious,
+                        onSwipeNext: onSwipeNext,
                       ),
-                    ),
-                    Positioned(
-                      left: 12,
-                      right: 12,
-                      bottom: 12,
-                      child: toolbar,
                     ),
                     Positioned.fill(
                       child: IgnorePointer(
@@ -7211,16 +7383,15 @@ class _LandscapeDetailLayout extends StatelessWidget {
                       ),
                     ),
                     const _SectionMarker(number: 7),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: _TextPanelToggleButton(
+                        collapsed: true,
+                        onTap: onExpandTextPanel,
+                      ),
+                    ),
                   ],
-                ),
-              ),
-              Positioned(
-                top: 0,
-                right: 0,
-                child: IconButton(
-                  tooltip: '显示文字面板',
-                  onPressed: onExpandTextPanel,
-                  icon: const Icon(Icons.chevron_left_rounded),
                 ),
               ),
             ],
@@ -7254,13 +7425,9 @@ class _LandscapeDetailLayout extends StatelessWidget {
                       onPanUpdate: onPanUpdate,
                       onZoomChanged: onZoomChanged,
                       desktop: desktop,
+                      onSwipePrevious: onSwipePrevious,
+                      onSwipeNext: onSwipeNext,
                     ),
-                  ),
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
-                    child: toolbar,
                   ),
                   Positioned.fill(
                     child: IgnorePointer(
@@ -7330,12 +7497,16 @@ double _viewerPhotoAspectRatio(PhotoData photo, double turns) {
   return quarterTurns.isOdd ? 1 / baseAspect : baseAspect;
 }
 
-Size _containedPhotoSize({
+Size _fittedPhotoSize({
   required Size viewportSize,
   required double photoAspectRatio,
+  required BoxFit fit,
 }) {
   final double viewportAspect = viewportSize.width / viewportSize.height;
-  if (viewportAspect > photoAspectRatio) {
+  final bool useHeight = fit == BoxFit.cover
+      ? viewportAspect < photoAspectRatio
+      : viewportAspect > photoAspectRatio;
+  if (useHeight) {
     final double height = viewportSize.height;
     return Size(height * photoAspectRatio, height);
   }
@@ -7348,16 +7519,18 @@ Offset _clampPhotoPanOffset({
   required double photoAspectRatio,
   required double zoom,
   required Offset panOffset,
+  BoxFit baseFit = BoxFit.contain,
 }) {
   if (zoom <= 1) {
     return Offset.zero;
   }
-  final Size containedSize = _containedPhotoSize(
+  final Size fittedSize = _fittedPhotoSize(
     viewportSize: viewportSize,
     photoAspectRatio: photoAspectRatio,
+    fit: baseFit,
   );
-  final double scaledWidth = containedSize.width * zoom;
-  final double scaledHeight = containedSize.height * zoom;
+  final double scaledWidth = fittedSize.width * zoom;
+  final double scaledHeight = fittedSize.height * zoom;
   final double maxDx = math.max(0, (scaledWidth - viewportSize.width) / 2);
   final double maxDy = math.max(0, (scaledHeight - viewportSize.height) / 2);
   return Offset(
@@ -7410,6 +7583,90 @@ class _DragDivider extends StatelessWidget {
   }
 }
 
+class _WidthPriorityPhotoFrame extends StatelessWidget {
+  const _WidthPriorityPhotoFrame({
+    required this.photo,
+    required this.turns,
+    this.onSwipePrevious,
+    this.onSwipeNext,
+  });
+
+  final PhotoData photo;
+  final double turns;
+  final VoidCallback? onSwipePrevious;
+  final VoidCallback? onSwipeNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final PrototypeThemeTokens? tokens =
+            Theme.of(context).extension<PrototypeThemeTokens>();
+        final double imageAspectRatio = _viewerPhotoAspectRatio(photo, turns);
+        final double fallbackHeight = constraints.maxWidth / imageAspectRatio;
+        final String? imagePath = photo.imagePath;
+        final int quarterTurns = ((turns * 4).round() % 4 + 4) % 4;
+        Widget imageChild;
+        if (imagePath != null) {
+          final File file = File(imagePath);
+          if (file.existsSync()) {
+            imageChild = Image.file(
+              file,
+              width: constraints.maxWidth,
+              fit: BoxFit.fitWidth,
+              errorBuilder: (_, _, _) => SizedBox(
+                width: constraints.maxWidth,
+                height: fallbackHeight,
+                child: ScenicArtwork(style: photo.style),
+              ),
+            );
+          } else {
+            imageChild = SizedBox(
+              width: constraints.maxWidth,
+              height: fallbackHeight,
+              child: ScenicArtwork(style: photo.style),
+            );
+          }
+        } else {
+          imageChild = SizedBox(
+            width: constraints.maxWidth,
+            height: fallbackHeight,
+            child: ScenicArtwork(style: photo.style),
+          );
+        }
+        if (quarterTurns != 0) {
+          imageChild = RotatedBox(quarterTurns: quarterTurns, child: imageChild);
+        }
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color:
+                tokens?.background ?? Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragEnd: (DragEndDetails details) {
+                final double velocity = details.primaryVelocity ?? 0;
+                if (velocity > 220) {
+                  onSwipePrevious?.call();
+                } else if (velocity < -220) {
+                  onSwipeNext?.call();
+                }
+              },
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: imageChild,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _DetailImageFrame extends StatelessWidget {
   const _DetailImageFrame({
     required this.photo,
@@ -7423,6 +7680,9 @@ class _DetailImageFrame extends StatelessWidget {
     this.mobilePinchSensitivity = 0.1,
     this.lockPinchToViewportCenter = false,
     this.backgroundColor,
+    this.onSwipePrevious,
+    this.onSwipeNext,
+    this.baseFit = BoxFit.contain,
   });
 
   final PhotoData photo;
@@ -7436,6 +7696,9 @@ class _DetailImageFrame extends StatelessWidget {
   final double mobilePinchSensitivity;
   final bool lockPinchToViewportCenter;
   final Color? backgroundColor;
+  final VoidCallback? onSwipePrevious;
+  final VoidCallback? onSwipeNext;
+  final BoxFit baseFit;
 
   @override
   Widget build(BuildContext context) {
@@ -7445,15 +7708,23 @@ class _DetailImageFrame extends StatelessWidget {
             Theme.of(context).extension<PrototypeThemeTokens>();
         final Size viewportSize = constraints.biggest;
         final double photoAspectRatio = _viewerPhotoAspectRatio(photo, turns);
+        final Size fittedSize = _fittedPhotoSize(
+          viewportSize: viewportSize,
+          photoAspectRatio: photoAspectRatio,
+          fit: baseFit,
+        );
         final Offset effectivePanOffset = _clampPhotoPanOffset(
           viewportSize: viewportSize,
           photoAspectRatio: photoAspectRatio,
           zoom: zoom,
           panOffset: panOffset,
+          baseFit: baseFit,
         );
         double gestureStartZoom = zoom;
         Offset gestureStartPan = effectivePanOffset;
         Offset gestureStartFocalPoint = Offset.zero;
+        Offset gestureTotalDelta = Offset.zero;
+        int gesturePointerCount = 0;
         return DecoratedBox(
           decoration: BoxDecoration(
             color:
@@ -7484,8 +7755,14 @@ class _DetailImageFrame extends StatelessWidget {
                   gestureStartZoom = zoom;
                   gestureStartPan = effectivePanOffset;
                   gestureStartFocalPoint = details.focalPoint;
+                  gestureTotalDelta = Offset.zero;
+                  gesturePointerCount = details.pointerCount;
                 },
                 onScaleUpdate: (ScaleUpdateDetails details) {
+                  gesturePointerCount = details.pointerCount;
+                  if (details.pointerCount == 1) {
+                    gestureTotalDelta += details.focalPointDelta;
+                  }
                   final double nextZoom = desktop
                       ? (gestureStartZoom * details.scale).clamp(0.8, maxZoom)
                       : (gestureStartZoom *
@@ -7508,22 +7785,47 @@ class _DetailImageFrame extends StatelessWidget {
                     photoAspectRatio: photoAspectRatio,
                     zoom: nextZoom,
                     panOffset: translatedOffset,
+                    baseFit: baseFit,
                   );
                   if (details.pointerCount > 1 || nextZoom > 1 || zoom > 1) {
                     onPanUpdate(clampedOffset);
                   }
                 },
-                child: SizedBox.expand(
-                  child: Transform.translate(
-                    offset: effectivePanOffset,
-                    child: Transform.rotate(
-                      angle: math.pi * 2 * turns,
-                      child: Transform.scale(
-                        alignment: Alignment.center,
-                        scale: zoom,
-                        child: PhotoVisual(
-                          photo: photo,
-                          fit: BoxFit.contain,
+                onScaleEnd: (ScaleEndDetails details) {
+                  if (desktop ||
+                      gesturePointerCount != 1 ||
+                      zoom > 1.02 ||
+                      gestureStartZoom > 1.02) {
+                    return;
+                  }
+                  final double absDx = gestureTotalDelta.dx.abs();
+                  final double absDy = gestureTotalDelta.dy.abs();
+                  if (absDx < 56 || absDx < absDy * 1.2) {
+                    return;
+                  }
+                  if (gestureTotalDelta.dx > 0) {
+                    onSwipePrevious?.call();
+                  } else {
+                    onSwipeNext?.call();
+                  }
+                },
+                child: ClipRect(
+                  child: Center(
+                    child: Transform.translate(
+                      offset: effectivePanOffset,
+                      child: Transform.rotate(
+                        angle: math.pi * 2 * turns,
+                        child: Transform.scale(
+                          alignment: Alignment.center,
+                          scale: zoom,
+                          child: SizedBox(
+                            width: fittedSize.width,
+                            height: fittedSize.height,
+                            child: PhotoVisual(
+                              photo: photo,
+                              fit: baseFit,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -7602,6 +7904,8 @@ class _PhotoTextPanel extends StatelessWidget {
         ? Color.alphaBlend(colorScheme.primary.withValues(alpha: 0.10), tokens.surface)
         : const Color(0xFFF4EADF);
     final bool isAndroid = theme.platform == TargetPlatform.android;
+    final double titleFontSize = isAndroid ? 19 : 21;
+    final double dateFontSize = isAndroid ? 10 : 11;
     final double noteLineHeight = noteFontSize * 1.7;
     final double minNoteHeight = noteLineHeight * 10;
     final String resolvedPhotoDate =
@@ -7741,6 +8045,19 @@ class _PhotoTextPanel extends StatelessWidget {
         ],
       ),
     );
+    final Widget titleDisplay = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: onEditTitle,
+      child: Text(
+        photo.title,
+        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+          fontSize: titleFontSize,
+          fontWeight: FontWeight.w700,
+          color: strongText,
+          height: 1.1,
+        ),
+      ),
+    );
     final Widget titleSection = Stack(
       children: <Widget>[
         DecoratedBox(
@@ -7751,30 +8068,26 @@ class _PhotoTextPanel extends StatelessWidget {
           ),
           child: Padding(
             padding: EdgeInsets.fromLTRB(
-              12,
-              isAndroid ? 4 : 12,
-              12,
-              isAndroid ? 8 : 12,
+              isAndroid ? 10 : 10,
+              isAndroid ? 3 : 8,
+              isAndroid ? 10 : 10,
+              isAndroid ? 4 : 8,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: isAndroid
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 if (isAndroid) ...<Widget>[
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
                       Expanded(
                         child: isEditingTitle
                             ? titleEditor
-                            : Text(
-                                photo.title,
-                                style: Theme.of(context).textTheme.headlineSmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: strongText,
-                                    ),
-                              ),
+                            : titleDisplay,
                       ),
                       const SizedBox(width: 8),
                       if (isEditingTitle) ...<Widget>[
@@ -7788,24 +8101,20 @@ class _PhotoTextPanel extends StatelessWidget {
                           onPressed: onCancelTitle,
                           icon: const Icon(Icons.close_rounded, size: 18),
                         ),
-                      ] else
-                        IconButton(
-                          tooltip: '编辑标题',
-                          onPressed: onEditTitle,
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                        ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 4),
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
                       resolvedPhotoDate,
                       textAlign: TextAlign.right,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: mutedText,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                        color: mutedText.withValues(alpha: 0.82),
+                        fontWeight: FontWeight.w500,
+                        fontSize: dateFontSize,
+                        height: 1.0,
                       ),
                     ),
                   ),
@@ -7816,16 +8125,9 @@ class _PhotoTextPanel extends StatelessWidget {
                       Expanded(
                         child: isEditingTitle
                             ? titleEditor
-                            : Text(
-                                photo.title,
-                                style: Theme.of(context).textTheme.headlineSmall
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                      color: strongText,
-                                    ),
-                              ),
+                            : titleDisplay,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       Flexible(
                         child: isEditingTitle
                             ? SizedBox(
@@ -7837,10 +8139,12 @@ class _PhotoTextPanel extends StatelessWidget {
                                 child: Text(
                                   resolvedPhotoDate,
                                   textAlign: TextAlign.right,
-                                  style: Theme.of(context).textTheme.bodyMedium
+                                  style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
-                                        color: mutedText,
-                                        fontWeight: FontWeight.w600,
+                                        color: mutedText.withValues(alpha: 0.82),
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: dateFontSize,
+                                        height: 1.0,
                                       ),
                                 ),
                               ),
@@ -8037,26 +8341,7 @@ class _PhotoTextPanel extends StatelessWidget {
                         const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.bottomRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: <Widget>[
-                              _TinyTextScaleButton(
-                                label: 'A-',
-                                onTap: onDecreaseFont,
-                              ),
-                              const SizedBox(width: 6),
-                              _TinyTextScaleButton(
-                                label: 'A+',
-                                onTap: onIncreaseFont,
-                              ),
-                              if (!isEditingNote)
-                                IconButton(
-                                  tooltip: '编辑正文',
-                                  onPressed: onEditNote,
-                                  icon: const Icon(Icons.edit_outlined, size: 20),
-                                ),
-                            ],
-                          ),
+                          child: const SizedBox.shrink(),
                         ),
                       ],
                     ),
@@ -8088,23 +8373,16 @@ class _PhotoTextPanel extends StatelessWidget {
     }
     final List<Widget> panelChildren = isAndroid && isEditingNote
         ? <Widget>[
-            Transform.translate(
-              offset: const Offset(0, -8),
-              child: noteSection,
-            ),
-            Transform.translate(
-              offset: const Offset(0, -18),
-              child: titleSection,
-            ),
+            titleSection,
+            const SizedBox(height: 2),
+            noteSection,
           ]
         : <Widget>[
             titleSection,
             isAndroid
-                ? Transform.translate(
-                    offset: const Offset(0, -8),
-                    child: noteSection,
-                  )
-                : Expanded(child: noteSection),
+                ? const SizedBox(height: 2)
+                : const SizedBox.shrink(),
+            isAndroid ? noteSection : Expanded(child: noteSection),
           ];
 
     return DecoratedBox(
@@ -8124,30 +8402,215 @@ class _PhotoTextPanel extends StatelessWidget {
   }
 }
 
-class _TinyTextScaleButton extends StatelessWidget {
-  const _TinyTextScaleButton({required this.label, required this.onTap});
+class _PhotoEditResult {
+  const _PhotoEditResult({
+    required this.title,
+    required this.note,
+  });
 
-  final String label;
-  final VoidCallback onTap;
+  final String title;
+  final String note;
+}
+
+class _PhotoEditPage extends StatefulWidget {
+  const _PhotoEditPage({
+    required this.title,
+    required this.note,
+    required this.dateText,
+    required this.noteFontSize,
+  });
+
+  final String title;
+  final String note;
+  final String dateText;
+  final double noteFontSize;
+
+  @override
+  State<_PhotoEditPage> createState() => _PhotoEditPageState();
+}
+
+class _PhotoEditPageState extends State<_PhotoEditPage> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _noteController;
+  late final ScrollController _noteScrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.title);
+    _noteController = TextEditingController(text: widget.note);
+    _noteScrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _noteController.dispose();
+    _noteScrollController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    Navigator.of(context).pop(
+      _PhotoEditResult(
+        title: _titleController.text.trim(),
+        note: _noteController.text.trim(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(5),
-      onTap: onTap,
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3E7D9),
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: const Color(0xFFE0D1C0)),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF6B5645),
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color strongText = tokens.ink;
+    final Color bodyText = isDark
+        ? tokens.ink.withValues(alpha: 0.88)
+        : const Color(0xFF5C4837);
+    final Color mutedText = isDark
+        ? tokens.muted.withValues(alpha: 0.92)
+        : const Color(0xFF8D7968);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('编辑'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: _save,
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Stack(
+                children: <Widget>[
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tokens.surface.withValues(alpha: isDark ? 0.86 : 0.94),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(
+                        color: tokens.border.withValues(alpha: 0.85),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          TextField(
+                            controller: _titleController,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              hintText: '照片标题',
+                            ),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: strongText,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              widget.dateText,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: mutedText.withValues(alpha: 0.82),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                height: 1.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const _SectionMarker(number: 8),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: Stack(
+                  children: <Widget>[
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tokens.surface.withValues(alpha: isDark ? 0.86 : 0.94),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: tokens.border.withValues(alpha: 0.85),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Scrollbar(
+                          controller: _noteScrollController,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: _noteScrollController,
+                            child: TextField(
+                              controller: _noteController,
+                              minLines: 12,
+                              maxLines: null,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: '写下这张照片的文字描述',
+                              ),
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                fontSize: widget.noteFontSize,
+                                height: 1.7,
+                                color: bodyText,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: _showDebugSectionFrames
+                                ? Border.all(
+                                    color: const Color(0xFFE53935),
+                                    width: 2,
+                                  )
+                                : null,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const _SectionMarker(number: 10),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -8458,6 +8921,7 @@ class _AlbumTextEditorPane extends StatelessWidget {
     this.showSubtitle = true,
     this.showDivider = true,
     this.expandBody = true,
+    this.showEditControls = true,
   });
 
   final AlbumData album;
@@ -8472,6 +8936,7 @@ class _AlbumTextEditorPane extends StatelessWidget {
   final bool showSubtitle;
   final bool showDivider;
   final bool expandBody;
+  final bool showEditControls;
 
   @override
   Widget build(BuildContext context) {
@@ -8556,17 +9021,19 @@ class _AlbumTextEditorPane extends StatelessWidget {
                         ),
                       ),
               ),
-              const SizedBox(width: 8),
-              editButton,
-              if (isEditing)
-                IconButton(
-                  tooltip: '取消编辑',
-                  onPressed: onCancel,
-                  icon: const Icon(Icons.close_rounded),
-                ),
+              if (showEditControls) ...<Widget>[
+                const SizedBox(width: 8),
+                editButton,
+                if (isEditing)
+                  IconButton(
+                    tooltip: '取消编辑',
+                    onPressed: onCancel,
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+              ],
             ],
           )
-        else
+        else if (showEditControls)
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: <Widget>[
@@ -8606,6 +9073,215 @@ class _AlbumTextEditorPane extends StatelessWidget {
     );
   }
 
+}
+
+class _TextPanelToggleButton extends StatelessWidget {
+  const _TextPanelToggleButton({
+    required this.collapsed,
+    required this.onTap,
+  });
+
+  final bool collapsed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: collapsed ? '重新显示文字面板' : '隐藏文字面板',
+      onPressed: onTap,
+      icon: Icon(
+        collapsed
+            ? Icons.chevron_left_rounded
+            : Icons.chevron_right_rounded,
+      ),
+    );
+  }
+}
+
+class _AlbumDetailEditResult {
+  const _AlbumDetailEditResult({
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+}
+
+class _AlbumDetailEditPage extends StatefulWidget {
+  const _AlbumDetailEditPage({required this.album});
+
+  final AlbumData album;
+
+  @override
+  State<_AlbumDetailEditPage> createState() => _AlbumDetailEditPageState();
+}
+
+class _AlbumDetailEditPageState extends State<_AlbumDetailEditPage> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final ScrollController _descriptionScrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.album.title);
+    _descriptionController =
+        TextEditingController(text: widget.album.description);
+    _descriptionScrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _descriptionScrollController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    Navigator.of(context).pop(
+      _AlbumDetailEditResult(
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens tokens =
+        theme.extension<PrototypeThemeTokens>()!;
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color strongText = tokens.ink;
+    final Color bodyText = isDark
+        ? tokens.ink.withValues(alpha: 0.88)
+        : const Color(0xFF5C4837);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('编辑'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: _save,
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Stack(
+                children: <Widget>[
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tokens.surface.withValues(alpha: isDark ? 0.86 : 0.94),
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(
+                        color: tokens.border.withValues(alpha: 0.85),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: TextField(
+                        controller: _titleController,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          hintText: '相册名字',
+                        ),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: strongText,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: _showDebugSectionFrames
+                              ? Border.all(
+                                  color: const Color(0xFFE53935),
+                                  width: 2,
+                                )
+                              : null,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const _SectionMarker(number: 5),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: Stack(
+                  children: <Widget>[
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tokens.surface.withValues(alpha: isDark ? 0.86 : 0.94),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: tokens.border.withValues(alpha: 0.85),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Scrollbar(
+                          controller: _descriptionScrollController,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: _descriptionScrollController,
+                            child: TextField(
+                              controller: _descriptionController,
+                              minLines: 10,
+                              maxLines: null,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                hintText: '输入相册描述',
+                              ),
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: bodyText,
+                                height: 1.7,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: _showDebugSectionFrames
+                                ? Border.all(
+                                    color: const Color(0xFFE53935),
+                                    width: 2,
+                                  )
+                                : null,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const _SectionMarker(number: 6),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MobileFocusedAlbumStage extends StatefulWidget {
@@ -8681,17 +9357,6 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
     setState(() {
       _editingText = false;
     });
-  }
-
-  Future<void> _pickCover() async {
-    final String? coverPhotoId = await _ShelfScene._showAlbumCoverPickerDialog(
-      context,
-      widget.album,
-    );
-    if (!mounted || coverPhotoId == null) {
-      return;
-    }
-    widget.onAlbumChanged(widget.album.copyWith(coverPhotoId: coverPhotoId));
   }
 
   @override
@@ -8797,31 +9462,6 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
                                         ),
                                       ),
                                       Positioned(
-                                        right: 8,
-                                        bottom: 8,
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: IconButton.filledTonal(
-                                            padding: EdgeInsets.zero,
-                                            visualDensity: const VisualDensity(
-                                              horizontal: -4,
-                                              vertical: -4,
-                                            ),
-                                            constraints: const BoxConstraints(
-                                              minWidth: 16,
-                                              minHeight: 16,
-                                            ),
-                                            tooltip: '编辑封面',
-                                            onPressed: _pickCover,
-                                            icon: const Icon(
-                                              Icons.edit_outlined,
-                                              size: 10,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
                                         left: 20,
                                         right: 20,
                                         bottom: 20,
@@ -8880,6 +9520,7 @@ class _MobileFocusedAlbumStageState extends State<_MobileFocusedAlbumStage> {
                           onStartEditing: _startEditing,
                           onCancel: _cancelEditing,
                           onSave: _saveEditing,
+                          showEditControls: false,
                         ),
                       ),
                     ),
@@ -8967,17 +9608,6 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
     setState(() {
       _editingText = false;
     });
-  }
-
-  Future<void> _pickCover() async {
-    final String? coverPhotoId = await _ShelfScene._showAlbumCoverPickerDialog(
-      context,
-      widget.album,
-    );
-    if (!mounted || coverPhotoId == null) {
-      return;
-    }
-    widget.onAlbumChanged(widget.album.copyWith(coverPhotoId: coverPhotoId));
   }
 
   @override
@@ -9068,18 +9698,6 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
                                 ),
                               ),
                               Positioned(
-                                top: 14,
-                                right: 14,
-                                child: IconButton.filledTonal(
-                                  tooltip: '编辑封面',
-                                  onPressed: _pickCover,
-                                  icon: const Icon(
-                                    Icons.edit_outlined,
-                                    size: 18,
-                                  ),
-                                ),
-                              ),
-                              Positioned(
                                 left: 24,
                                 right: 24,
                                 bottom: 24,
@@ -9137,6 +9755,7 @@ class _DesktopFocusedAlbumStageState extends State<_DesktopFocusedAlbumStage> {
                     onStartEditing: _startEditing,
                     onCancel: _cancelEditing,
                     onSave: _saveEditing,
+                    showEditControls: false,
                   ),
                 ),
               ),

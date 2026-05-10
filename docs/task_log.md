@@ -1,5 +1,37 @@
 # Task Log
 
+## 2026-05-10
+
+### What Was Completed
+- Changed fullscreen photo viewing to use a `cover`-style base display instead of the old `contain` default, so entering fullscreen now behaves more like a phone gallery viewer.
+- Kept image ratios intact in fullscreen while allowing overflow cropping beyond the viewport edges.
+- Reworked the regular Android photo-detail image region (`subwindow 7`) away from the previous fixed-height container toward a width-priority image block that grows vertically with the image.
+- Switched the regular Android photo-detail image block to natural-width rendering using the available parent width instead of the older viewport-style fixed-height frame.
+- Turned the debug-only red borders and top-right subwindow number tags back off for default packaged builds.
+- Rebuilt the Android release APK and refreshed the packaged installer output in `build/installers`.
+
+### Files Changed
+- `lib/main.dart`
+- `WORKLOG.md`
+- `README.md`
+- `docs/current_status.md`
+- `docs/task_log.md`
+
+### How To Verify
+- Run `flutter analyze --no-pub`
+- Run `flutter build apk`
+- Open Android photo detail in normal mode and confirm the image in `subwindow 7` expands by width and the region height follows the image.
+- Open fullscreen mode and confirm the initial display now behaves like `cover`: ratio preserved, at least one axis filled, overflow allowed to crop.
+- Confirm the packaged UI no longer shows the old debug red frames or subwindow number tags.
+
+### Current Problem
+- The Android regular photo-detail image region still needs real-device visual confirmation; the latest change compiles and packages, but the user has not yet confirmed that `subwindow 7` now matches the intended article-style width-priority behavior.
+- The local untracked file `相册界面2.png` still has not been added to version control.
+- The generated `feature_check_report.html` is still local-only and not committed.
+
+### Next Suggestion
+- Validate the normal Android photo-detail image block and fullscreen default on device, then continue iterating only on `subwindow 7` if the width-priority behavior still needs tightening.
+
 ## 2026-05-08
 
 ### What Was Completed
