@@ -11,11 +11,12 @@ import 'package:flutter/gestures.dart'
     show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
-    show KeyDownEvent, KeyEvent, LogicalKeyboardKey;
+    show KeyDownEvent, KeyEvent, LogicalKeyboardKey, rootBundle;
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:exif/exif.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -28,8 +29,28 @@ void showPrototypeMessage(BuildContext context, String message) {
 
 const Object _fieldUnset = Object();
 typedef DataActionCallback = Future<void> Function();
+typedef ContextDataActionCallback = Future<void> Function(BuildContext context);
 typedef TrashRestoreCallback = String Function(TrashPhotoEntry entry);
 typedef AlbumsChangedCallback = void Function(List<AlbumData> albums);
+
+const List<String> _bundledSampleImageAssets = <String>[
+  'pic/wallhaven-ey26qk.jpg',
+  'pic/wallhaven-jxv965.png',
+  'pic/wallhaven-mp7o9m.jpg',
+  'pic/wallhaven-wqm7oq.jpg',
+  'pic/Screenshot 2026-04-20 153320.png',
+];
+
+const List<String> _presetPhotoTags = <String>[
+  '山',
+  '河流',
+  '自拍',
+  '单人',
+  '多人',
+  '夜景',
+  '城市',
+  '旅行',
+];
 
 class LocalAlbumStore {
   static const String _albumsKey = 'albums_json_v1';
@@ -263,6 +284,31 @@ class LocalAlbumStore {
     return targetPath;
   }
 
+  static Future<String> persistBundledImageBytes(
+    Uint8List bytes, {
+    required String albumId,
+    required String sourceName,
+  }) async {
+    return persistImageBytes(
+      bytes,
+      albumId: albumId,
+      sourceName: sourceName,
+    );
+  }
+
+  static Future<String> persistImageBytes(
+    Uint8List bytes, {
+    required String albumId,
+    required String sourceName,
+  }) async {
+    final Directory mediaDir = await _mediaDirectory();
+    final String extension = _fileExtension(sourceName);
+    final String targetPath =
+        '${mediaDir.path}${Platform.pathSeparator}${albumId}_${DateTime.now().microsecondsSinceEpoch}$extension';
+    await File(targetPath).writeAsBytes(bytes, flush: true);
+    return targetPath;
+  }
+
   static Future<void> deleteManagedImage(String? path) async {
     if (path == null || path.isEmpty) {
       return;
@@ -382,7 +428,7 @@ class LocalAlbumStore {
   }
 }
 
-enum PrototypeThemeStyle { warm, walnut, sage, githubSoft }
+enum PrototypeThemeStyle { warm, walnut, sage, githubSoft, xiaohongshu }
 
 enum HomeSection { albums, memories, favorites, trash, recent }
 
@@ -546,6 +592,16 @@ PrototypePalette paletteFor(PrototypeThemeStyle style, Brightness brightness) {
         border: isDark ? const Color(0xFF444C56) : const Color(0xFFD0D7DE),
         muted: isDark ? const Color(0xFF768390) : const Color(0xFF57606A),
       );
+    case PrototypeThemeStyle.xiaohongshu:
+      return PrototypePalette(
+        background: isDark ? const Color(0xFF171717) : const Color(0xFFFFFFFF),
+        surface: isDark ? const Color(0xFF232323) : const Color(0xFFFFFFFF),
+        primary: const Color(0xFFFF2442),
+        secondary: isDark ? const Color(0xFF3A2C31) : const Color(0xFFFFE8ED),
+        ink: isDark ? const Color(0xFFF5F5F5) : const Color(0xFF111111),
+        border: isDark ? const Color(0xFF3A3A3A) : const Color(0xFFEDEDED),
+        muted: isDark ? const Color(0xFFB8B8B8) : const Color(0xFF666666),
+      );
   }
 }
 
@@ -559,6 +615,8 @@ String themeStyleLabel(PrototypeThemeStyle style) {
       return '鼠尾草';
     case PrototypeThemeStyle.githubSoft:
       return 'GitHub Soft Dark';
+    case PrototypeThemeStyle.xiaohongshu:
+      return '小红书';
   }
 }
 
@@ -746,6 +804,25 @@ DateTime _albumLatestDate(AlbumData album) {
   return latest;
 }
 
+bool photoMatchesSearchQuery(
+  PhotoData photo,
+  String query, {
+  AlbumData? album,
+}) {
+  final String trimmed = query.trim().toLowerCase();
+  if (trimmed.isEmpty) {
+    return true;
+  }
+  final String tagText = photo.tags.join(' ');
+  final String albumText = album == null
+      ? ''
+      : '${album.title} ${album.description} ${album.subtitle}';
+  final String haystack =
+      '${photo.title} ${photo.note} ${photo.date} $tagText $albumText'
+          .toLowerCase();
+  return haystack.contains(trimmed);
+}
+
 class FavoritePhotoEntry {
   const FavoritePhotoEntry({
     required this.album,
@@ -810,17 +887,10 @@ List<FavoritePhotoEntry> favoritePhotoEntries(
       if (!photo.isFavorite) {
         continue;
       }
-      if (query.isNotEmpty) {
-        final String haystack =
-            '${photo.title} ${photo.note} ${photo.date} ${album.title} ${album.description}'
-                .toLowerCase();
-        if (!haystack.contains(query)) {
-          continue;
-        }
+      if (!photoMatchesSearchQuery(photo, query, album: album)) {
+        continue;
       }
-      entries.add(
-        FavoritePhotoEntry(album: album, photo: photo, photoIndex: index),
-      );
+      entries.add(FavoritePhotoEntry(album: album, photo: photo, photoIndex: index));
     }
   }
   entries.sort((FavoritePhotoEntry a, FavoritePhotoEntry b) {
@@ -839,7 +909,7 @@ List<TrashPhotoEntry> filterTrashPhotoEntries(
   }
   return entries.where((TrashPhotoEntry entry) {
     final String haystack =
-        '${entry.photo.title} ${entry.photo.note} ${entry.photo.date} ${entry.albumTitle} ${entry.deletedAt}'
+        '${entry.photo.title} ${entry.photo.note} ${entry.photo.date} ${entry.photo.tags.join(' ')} ${entry.albumTitle} ${entry.deletedAt}'
             .toLowerCase();
     return haystack.contains(query);
   }).toList();
@@ -880,6 +950,14 @@ DateTime? parseChineseDate(String text) {
 Future<PhotoOrientation> detectPhotoOrientation(String path) async {
   try {
     final Uint8List bytes = await File(path).readAsBytes();
+    return detectPhotoOrientationFromBytes(bytes);
+  } catch (_) {
+    return PhotoOrientation.landscape;
+  }
+}
+
+Future<PhotoOrientation> detectPhotoOrientationFromBytes(Uint8List bytes) async {
+  try {
     final Completer<ui.Image> completer = Completer<ui.Image>();
     ui.decodeImageFromList(bytes, (ui.Image image) {
       completer.complete(image);
@@ -890,6 +968,20 @@ Future<PhotoOrientation> detectPhotoOrientation(String path) async {
         : PhotoOrientation.landscape;
   } catch (_) {
     return PhotoOrientation.landscape;
+  }
+}
+
+Future<Size?> resolvePhotoPixelSize(String path) async {
+  try {
+    final Uint8List bytes = await File(path).readAsBytes();
+    final Completer<ui.Image> completer = Completer<ui.Image>();
+    ui.decodeImageFromList(bytes, (ui.Image image) {
+      completer.complete(image);
+    });
+    final ui.Image image = await completer.future;
+    return Size(image.width.toDouble(), image.height.toDouble());
+  } catch (_) {
+    return null;
   }
 }
 
@@ -977,88 +1069,118 @@ String derivePhotoTitleFromPath(String path) {
   return compact.length > 18 ? '${compact.substring(0, 18)}...' : compact;
 }
 
+String normalizePhotoTag(String value) {
+  return value.trim();
+}
+
+List<String> sanitizePhotoTags(Iterable<String> tags) {
+  final List<String> nextTags = <String>[];
+  final Set<String> seen = <String>{};
+  for (final String rawTag in tags) {
+    final String tag = normalizePhotoTag(rawTag);
+    if (tag.isEmpty) {
+      continue;
+    }
+    final String lowered = tag.toLowerCase();
+    if (seen.add(lowered)) {
+      nextTags.add(tag);
+    }
+  }
+  return nextTags;
+}
+
 Future<void> showPrototypeSettingsSheet(
   BuildContext context, {
   required PrototypeAppearance appearance,
   required ValueChanged<PrototypeAppearance> onChanged,
   required DataActionCallback onExportDataPressed,
   required DataActionCallback onImportDataPressed,
-  required DataActionCallback onCustomBackgroundPressed,
-  required DataActionCallback onClearBackgroundPressed,
-  required DataActionCallback onAboutSoftwarePressed,
+  required ContextDataActionCallback onCustomBackgroundPressed,
+  required ContextDataActionCallback onClearBackgroundPressed,
+  required ContextDataActionCallback onAboutSoftwarePressed,
 }) {
   final bool isDesktop = MediaQuery.of(context).size.width >= 900;
-  final ThemeData theme = Theme.of(context);
-  final PrototypeThemeTokens tokens = theme.extension<PrototypeThemeTokens>()!;
-  final bool isDark = theme.brightness == Brightness.dark;
+  PrototypeAppearance currentAppearance = appearance;
   if (isDesktop) {
     return showDialog<void>(
       context: context,
       builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 120,
-            vertical: 60,
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760, maxHeight: 680),
-            child: Container(
-              decoration: BoxDecoration(
-                color: tokens.surface.withValues(alpha: isDark ? 0.98 : 1),
-                borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: tokens.border),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.13),
-                    blurRadius: 28,
-                    offset: const Offset(0, 20),
-                  ),
-                ],
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setSheetState) {
+            final ThemeData theme = Theme.of(context);
+            final PrototypeThemeTokens tokens =
+                theme.extension<PrototypeThemeTokens>()!;
+            final bool isDark = theme.brightness == Brightness.dark;
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 120,
+                vertical: 60,
               ),
-              child: Column(
-                children: <Widget>[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 22, 14, 8),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            '桌面设置',
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: tokens.ink,
-                                ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760, maxHeight: 680),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: tokens.surface.withValues(alpha: isDark ? 0.98 : 1),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: tokens.border),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.13),
+                        blurRadius: 28,
+                        offset: const Offset(0, 20),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 22, 14, 8),
+                        child: Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                '桌面设置',
+                                style: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: tokens.ink,
+                                    ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+                          child: _PrototypeSettingsContent(
+                            appearance: currentAppearance,
+                            onChanged: (PrototypeAppearance nextAppearance) {
+                              currentAppearance = nextAppearance;
+                              onChanged(nextAppearance);
+                              setSheetState(() {});
+                            },
+                            onExportDataPressed: onExportDataPressed,
+                            onImportDataPressed: onImportDataPressed,
+                            onCustomBackgroundPressed: onCustomBackgroundPressed,
+                            onClearBackgroundPressed: onClearBackgroundPressed,
+                            onAboutSoftwarePressed: onAboutSoftwarePressed,
+                            desktop: true,
                           ),
                         ),
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-                      child: _PrototypeSettingsContent(
-                        appearance: appearance,
-                        onChanged: onChanged,
-                        onExportDataPressed: onExportDataPressed,
-                        onImportDataPressed: onImportDataPressed,
-                        onCustomBackgroundPressed: onCustomBackgroundPressed,
-                        onClearBackgroundPressed: onClearBackgroundPressed,
-                        onAboutSoftwarePressed: onAboutSoftwarePressed,
-                        desktop: true,
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -1067,32 +1189,44 @@ Future<void> showPrototypeSettingsSheet(
     MaterialPageRoute<void>(
       builder: (BuildContext context) {
         final ScrollController scrollController = ScrollController();
-        return Scaffold(
-          backgroundColor: tokens.surface.withValues(alpha: isDark ? 0.99 : 1),
-          appBar: AppBar(
-            title: const Text('设置'),
-          ),
-          body: SafeArea(
-            child: Scrollbar(
-              controller: scrollController,
-              thumbVisibility: true,
-              interactive: true,
-              child: SingleChildScrollView(
-                controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                child: _PrototypeSettingsContent(
-                  appearance: appearance,
-                  onChanged: onChanged,
-                  onExportDataPressed: onExportDataPressed,
-                  onImportDataPressed: onImportDataPressed,
-                  onCustomBackgroundPressed: onCustomBackgroundPressed,
-                  onClearBackgroundPressed: onClearBackgroundPressed,
-                  onAboutSoftwarePressed: onAboutSoftwarePressed,
-                  desktop: false,
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setSheetState) {
+            final ThemeData theme = Theme.of(context);
+            final PrototypeThemeTokens tokens =
+                theme.extension<PrototypeThemeTokens>()!;
+            final bool isDark = theme.brightness == Brightness.dark;
+            return Scaffold(
+              backgroundColor: tokens.surface.withValues(alpha: isDark ? 0.99 : 1),
+              appBar: AppBar(
+                title: const Text('设置'),
+              ),
+              body: SafeArea(
+                child: Scrollbar(
+                  controller: scrollController,
+                  thumbVisibility: true,
+                  interactive: true,
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    child: _PrototypeSettingsContent(
+                      appearance: currentAppearance,
+                      onChanged: (PrototypeAppearance nextAppearance) {
+                        currentAppearance = nextAppearance;
+                        onChanged(nextAppearance);
+                        setSheetState(() {});
+                      },
+                      onExportDataPressed: onExportDataPressed,
+                      onImportDataPressed: onImportDataPressed,
+                      onCustomBackgroundPressed: onCustomBackgroundPressed,
+                      onClearBackgroundPressed: onClearBackgroundPressed,
+                      onAboutSoftwarePressed: onAboutSoftwarePressed,
+                      desktop: false,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     ),
@@ -1115,9 +1249,9 @@ class _PrototypeSettingsContent extends StatelessWidget {
   final ValueChanged<PrototypeAppearance> onChanged;
   final DataActionCallback onExportDataPressed;
   final DataActionCallback onImportDataPressed;
-  final DataActionCallback onCustomBackgroundPressed;
-  final DataActionCallback onClearBackgroundPressed;
-  final DataActionCallback onAboutSoftwarePressed;
+  final ContextDataActionCallback onCustomBackgroundPressed;
+  final ContextDataActionCallback onClearBackgroundPressed;
+  final ContextDataActionCallback onAboutSoftwarePressed;
   final bool desktop;
 
   @override
@@ -1126,16 +1260,6 @@ class _PrototypeSettingsContent extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          desktop ? '桌面界面设置会立即生效。' : '主题风格和明暗模式会立刻作用到首页、详情页和设置面板。',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(
-              context,
-            ).colorScheme.onSurface.withValues(alpha: 0.68),
-            height: 1.6,
-          ),
-        ),
-        const SizedBox(height: 18),
         _PrototypeOptionTile(
           icon: Icons.palette_outlined,
           title: '主题风格',
@@ -1155,69 +1279,6 @@ class _PrototypeSettingsContent extends StatelessWidget {
                 },
               );
             }).toList(),
-          ),
-        ),
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(
-              context,
-            ).colorScheme.primary.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.18),
-            ),
-          ),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Container(
-                  height: desktop ? 112 : 74,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: <Color>[
-                        Theme.of(context).scaffoldBackgroundColor,
-                        Theme.of(context).colorScheme.surface,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Container(
-                  height: desktop ? 112 : 74,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(5),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.primary.withValues(alpha: 0.14),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: desktop ? 58 : 46,
-                      height: desktop ? 58 : 46,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary,
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
         _PrototypeOptionTile(
@@ -1243,22 +1304,24 @@ class _PrototypeSettingsContent extends StatelessWidget {
           icon: Icons.wallpaper_outlined,
           title: '自定义背景',
           subtitle: appearance.backgroundImagePath == null
-              ? '当前使用默认渐变背景。'
-              : '已使用本地背景图，可随时替换或清除。',
+              ? '当前使用默认渐变背景，可从应用内相册选择背景。'
+              : '已使用应用内背景图，可随时替换或清除。',
           child: Wrap(
             spacing: 10,
             runSpacing: 10,
             children: <Widget>[
               FilledButton.tonalIcon(
-                onPressed: onCustomBackgroundPressed,
+                onPressed: () => onCustomBackgroundPressed(context),
                 icon: const Icon(Icons.image_outlined, size: 18),
                 label: Text(
-                  appearance.backgroundImagePath == null ? '选择背景' : '更换背景',
+                  appearance.backgroundImagePath == null
+                      ? '从相册选择背景'
+                      : '重新选择背景',
                 ),
               ),
               if (appearance.backgroundImagePath != null)
                 OutlinedButton.icon(
-                  onPressed: onClearBackgroundPressed,
+                  onPressed: () => onClearBackgroundPressed(context),
                   icon: const Icon(Icons.layers_clear_outlined, size: 18),
                   label: const Text('清除背景'),
                 ),
@@ -1298,7 +1361,7 @@ class _PrototypeSettingsContent extends StatelessWidget {
           child: Align(
             alignment: Alignment.centerLeft,
             child: FilledButton.tonalIcon(
-              onPressed: onAboutSoftwarePressed,
+              onPressed: () => onAboutSoftwarePressed(context),
               icon: const Icon(Icons.article_outlined, size: 18),
               label: const Text('关于软件'),
             ),
@@ -1550,14 +1613,27 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     unawaited(LocalAlbumStore.saveAppearance(_appearance));
   }
 
-  Future<void> _pickCustomBackground() async {
-    final FilePickerResult? result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择自定义背景',
-      type: FileType.custom,
-      allowedExtensions: const <String>['jpg', 'jpeg', 'png', 'webp', 'bmp'],
-      withData: false,
+  Future<void> _pickCustomBackground(BuildContext actionContext) async {
+    await _ensureBundledSamplePhotos();
+    final List<AlbumData> albumsWithPhotos = _albums
+        .where(
+          (AlbumData album) => album.photos.any(
+            (PhotoData photo) =>
+                photo.imagePath != null && photo.imagePath!.isNotEmpty,
+          ),
+        )
+        .toList();
+    if (albumsWithPhotos.isEmpty) {
+      showPrototypeMessage(actionContext, '当前相册里还没有可用图片');
+      return;
+    }
+    final String? sourcePath = await Navigator.of(actionContext).push<String>(
+      MaterialPageRoute<String>(
+        builder: (BuildContext context) => _BackgroundAlbumPickerPage(
+          albums: albumsWithPhotos,
+        ),
+      ),
     );
-    final String? sourcePath = result?.files.single.path;
     if (sourcePath == null || sourcePath.isEmpty) {
       return;
     }
@@ -1578,7 +1654,7 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     await LocalAlbumStore.saveAppearance(_appearance);
   }
 
-  Future<void> _clearCustomBackground() async {
+  Future<void> _clearCustomBackground(BuildContext actionContext) async {
     final String? previousPath = _appearance.backgroundImagePath;
     if (previousPath == null) {
       return;
@@ -1645,46 +1721,81 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
     await LocalAlbumStore.saveAppearance(_appearance);
   }
 
-  Future<void> _showAboutSoftware() async {
-    final String path =
-        '${Directory.current.path}${Platform.pathSeparator}about.txt';
+  Future<void> _showAboutSoftware(BuildContext actionContext) async {
     String content;
     try {
-      content = await File(path).readAsString();
+      content = await rootBundle.loadString('about.txt');
     } catch (_) {
-      content = '未能读取 about.txt。';
+      content = '未能读取项目根目录的 about.txt 资源。';
     }
-    if (!mounted) {
+    if (!actionContext.mounted) {
       return;
     }
-    final TextEditingController controller = TextEditingController(text: content);
     await showDialog<void>(
-      context: context,
+      context: actionContext,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('关于软件'),
-          content: SizedBox(
-            width: 560,
-            child: TextField(
-              controller: controller,
-              readOnly: true,
-              minLines: 12,
-              maxLines: 18,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
+        final bool isDesktop = MediaQuery.of(context).size.width >= 900;
+        final ThemeData theme = Theme.of(context);
+        final PrototypeThemeTokens? tokens =
+            theme.extension<PrototypeThemeTokens>();
+        final Color surface = tokens?.surface ?? theme.colorScheme.surface;
+        final Widget textBox = Container(
+          color: surface,
+          child: Scrollbar(
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                content,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: tokens?.ink ?? theme.colorScheme.onSurface,
+                  height: 1.7,
+                ),
               ),
             ),
           ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('关闭'),
+        );
+        if (isDesktop) {
+          return AlertDialog(
+            content: SizedBox(
+              width: 560,
+              child: textBox,
             ),
-          ],
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('关闭'),
+              ),
+            ],
+          );
+        }
+        return Dialog(
+          insetPadding: EdgeInsets.zero,
+          child: SafeArea(
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    textBox,
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('关闭'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         );
       },
     );
-    controller.dispose();
   }
 
   void _createAlbum(AlbumData album) {
@@ -1754,6 +1865,850 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         _recycleBin = recycleBin;
       }
     });
+    await _ensureBundledSamplePhotos();
+  }
+
+  Future<void> _ensureBundledSamplePhotos() async {
+    if (_albums.isEmpty) {
+      return;
+    }
+    final AlbumData firstAlbum = _albums.first;
+    final List<PhotoData> nextPhotos = List<PhotoData>.from(firstAlbum.photos);
+    bool changed = false;
+    for (final String assetPath in _bundledSampleImageAssets) {
+      final String assetId = _bundledSamplePhotoId(assetPath);
+      final int existingIndex = nextPhotos.indexWhere(
+        (PhotoData photo) => photo.id == assetId,
+      );
+      if (existingIndex != -1) {
+        final String? existingPath = nextPhotos[existingIndex].imagePath;
+        if (existingPath != null && await File(existingPath).exists()) {
+          continue;
+        }
+      }
+      try {
+        final ByteData data = await rootBundle.load(assetPath);
+        final Uint8List bytes = data.buffer.asUint8List();
+        final String storedPath = await LocalAlbumStore.persistBundledImageBytes(
+          bytes,
+          albumId: firstAlbum.id,
+          sourceName: assetPath,
+        );
+        final PhotoOrientation orientation =
+            await detectPhotoOrientationFromBytes(bytes);
+        final DateTime now = DateTime.now();
+        final PhotoData bundledPhoto = PhotoData(
+          id: assetId,
+          title: derivePhotoTitleFromPath(assetPath),
+          date: formatAlbumDate(now),
+          note: '内置示例图片',
+          orientation: orientation,
+          style: firstAlbum.style,
+          imagePath: storedPath,
+        );
+        if (existingIndex != -1) {
+          nextPhotos[existingIndex] = bundledPhoto;
+        } else {
+          nextPhotos.insert(0, bundledPhoto);
+        }
+        changed = true;
+      } catch (_) {}
+    }
+    if (!changed || !mounted) {
+      return;
+    }
+    final AlbumData updatedFirstAlbum = firstAlbum.copyWith(
+      photos: nextPhotos,
+      coverPhotoId: firstAlbum.coverPhotoId ?? nextPhotos.first.id,
+    );
+    setState(() {
+      _albums = <AlbumData>[updatedFirstAlbum, ..._albums.skip(1)];
+    });
+    await LocalAlbumStore.saveAlbums(_albums);
+  }
+
+  String _bundledSamplePhotoId(String assetPath) {
+    final String compact = assetPath
+        .replaceAll('\\', '/')
+        .split('/')
+        .last
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+        .toLowerCase();
+    return 'bundled-$compact';
+  }
+}
+
+class _BackgroundAlbumPickerPage extends StatelessWidget {
+  const _BackgroundAlbumPickerPage({required this.albums});
+
+  final List<AlbumData> albums;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('选择背景相册')),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: albums.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (BuildContext context, int index) {
+          final AlbumData album = albums[index];
+          final PhotoData? coverPhoto = album.coverPhoto;
+          return ListTile(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(5),
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.24),
+              ),
+            ),
+            contentPadding: const EdgeInsets.all(12),
+            leading: SizedBox(
+              width: 64,
+              height: 64,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(5),
+                child: coverPhoto == null
+                    ? ScenicArtwork(style: album.style)
+                    : PhotoVisual(photo: coverPhoto, fit: BoxFit.cover),
+              ),
+            ),
+            title: Text(album.title),
+            subtitle: Text('${album.photos.length} 张照片'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () async {
+              final String? result = await Navigator.of(context).push<String>(
+                MaterialPageRoute<String>(
+                  builder: (BuildContext context) => _BackgroundPhotoPickerPage(
+                    album: album,
+                  ),
+                ),
+              );
+              if (!context.mounted || result == null || result.isEmpty) {
+                return;
+              }
+              Navigator.of(context).pop(result);
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BackgroundPhotoPickerPage extends StatelessWidget {
+  const _BackgroundPhotoPickerPage({required this.album});
+
+  final AlbumData album;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<PhotoData> photos = album.photos
+        .where((PhotoData photo) => photo.imagePath != null && photo.imagePath!.isNotEmpty)
+        .toList();
+    return Scaffold(
+      appBar: AppBar(title: Text(album.title)),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: photos.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1,
+        ),
+        itemBuilder: (BuildContext context, int index) {
+          final PhotoData photo = photos[index];
+          return InkWell(
+            onTap: () => Navigator.of(context).pop(photo.imagePath),
+            borderRadius: BorderRadius.circular(5),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: PhotoVisual(
+                  photo: photo,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AndroidImportBucket {
+  const _AndroidImportBucket({
+    required this.path,
+    required this.coverAsset,
+    required this.count,
+  });
+
+  final AssetPathEntity path;
+  final AssetEntity? coverAsset;
+  final int count;
+}
+
+class _AndroidImportBucketPickerPage extends StatefulWidget {
+  const _AndroidImportBucketPickerPage();
+
+  @override
+  State<_AndroidImportBucketPickerPage> createState() =>
+      _AndroidImportBucketPickerPageState();
+}
+
+class _AndroidImportBucketPickerPageState
+    extends State<_AndroidImportBucketPickerPage> {
+  late final Future<List<_AndroidImportBucket>> _bucketsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _bucketsFuture = _loadBuckets();
+  }
+
+  Future<List<_AndroidImportBucket>> _loadBuckets() async {
+    final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
+      hasAll: false,
+      onlyAll: false,
+      type: RequestType.image,
+    );
+    final List<_AndroidImportBucket> buckets = <_AndroidImportBucket>[];
+    for (final AssetPathEntity path in paths) {
+      final int count = await path.assetCountAsync;
+      if (count <= 0) {
+        continue;
+      }
+      final List<AssetEntity> coverAssets = await path.getAssetListPaged(
+        page: 0,
+        size: 1,
+      );
+      buckets.add(
+        _AndroidImportBucket(
+          path: path,
+          coverAsset: coverAssets.isEmpty ? null : coverAssets.first,
+          count: count,
+        ),
+      );
+    }
+    return buckets;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens? tokens =
+        theme.extension<PrototypeThemeTokens>();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('选择系统相册'),
+      ),
+      body: FutureBuilder<List<_AndroidImportBucket>>(
+        future: _bucketsFuture,
+        builder: (
+          BuildContext context,
+          AsyncSnapshot<List<_AndroidImportBucket>> snapshot,
+        ) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final List<_AndroidImportBucket> buckets =
+              snapshot.data ?? const <_AndroidImportBucket>[];
+          if (buckets.isEmpty) {
+            return Center(
+              child: Text(
+                '没有可用的系统相册。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: tokens?.muted ?? theme.colorScheme.onSurface,
+                ),
+              ),
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            itemCount: buckets.length,
+            separatorBuilder: (BuildContext context, int index) =>
+                const SizedBox(height: 12),
+            itemBuilder: (BuildContext context, int index) {
+              final _AndroidImportBucket bucket = buckets[index];
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  final NavigatorState navigator = Navigator.of(context);
+                  final List<AssetEntity>? selected =
+                      await navigator.push<List<AssetEntity>>(
+                    MaterialPageRoute<List<AssetEntity>>(
+                      builder: (BuildContext context) {
+                        return _AndroidImportPhotoPickerPage(bucket: bucket);
+                      },
+                    ),
+                  );
+                  if (!mounted || selected == null || selected.isEmpty) {
+                    return;
+                  }
+                  navigator.pop(selected);
+                },
+                child: Ink(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: tokens?.surface ?? theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color:
+                          (tokens?.border ?? theme.colorScheme.outline)
+                              .withValues(alpha: 0.75),
+                    ),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: SizedBox(
+                          width: 72,
+                          height: 72,
+                          child: bucket.coverAsset == null
+                              ? Container(
+                                  color: (tokens?.border ??
+                                          theme.colorScheme.outline)
+                                      .withValues(alpha: 0.18),
+                                  child: const Icon(
+                                    Icons.photo_library_outlined,
+                                  ),
+                                )
+                              : _AssetEntityThumbnail(
+                                  asset: bucket.coverAsset!,
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              bucket.path.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${bucket.count} 张图片',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color:
+                                    tokens?.muted ??
+                                    theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AndroidImportPhotoPickerPage extends StatefulWidget {
+  const _AndroidImportPhotoPickerPage({required this.bucket});
+
+  final _AndroidImportBucket bucket;
+
+  @override
+  State<_AndroidImportPhotoPickerPage> createState() =>
+      _AndroidImportPhotoPickerPageState();
+}
+
+class _AndroidImportPhotoPickerPageState
+    extends State<_AndroidImportPhotoPickerPage> {
+  late final Future<List<AssetEntity>> _assetsFuture;
+  final ScrollController _gridScrollController = ScrollController();
+  final Set<String> _selectedAssetIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _assetsFuture = _loadAssets();
+  }
+
+  @override
+  void dispose() {
+    _gridScrollController.dispose();
+    super.dispose();
+  }
+
+  Future<List<AssetEntity>> _loadAssets() async {
+    final int count = await widget.bucket.path.assetCountAsync;
+    return widget.bucket.path.getAssetListPaged(page: 0, size: count);
+  }
+
+  void _toggleAssetSelection(AssetEntity asset) {
+    setState(() {
+      if (_selectedAssetIds.contains(asset.id)) {
+        _selectedAssetIds.remove(asset.id);
+      } else {
+        _selectedAssetIds.add(asset.id);
+      }
+    });
+  }
+
+  Future<void> _submitSelection() async {
+    final List<AssetEntity> assets = await _assetsFuture;
+    final List<AssetEntity> selected = assets.where((AssetEntity asset) {
+      return _selectedAssetIds.contains(asset.id);
+    }).toList();
+    if (!context.mounted) {
+      return;
+    }
+    Navigator.of(context).pop(selected);
+  }
+
+  void _toggleSelectAll(List<AssetEntity> assets) {
+    setState(() {
+      if (_selectedAssetIds.length == assets.length) {
+        _selectedAssetIds.clear();
+      } else {
+        _selectedAssetIds
+          ..clear()
+          ..addAll(assets.map((AssetEntity asset) => asset.id));
+      }
+    });
+  }
+
+  Future<void> _openAssetPreview(AssetEntity asset) async {
+    final List<AssetEntity> assets = await _assetsFuture;
+    final int initialIndex = assets.indexWhere((AssetEntity item) {
+      return item.id == asset.id;
+    });
+    final Set<String>? updatedSelection =
+        await Navigator.of(context).push<Set<String>>(
+      MaterialPageRoute<Set<String>>(
+        builder: (BuildContext context) => _AndroidImportPhotoPreviewPage(
+          assets: assets,
+          initialIndex: initialIndex < 0 ? 0 : initialIndex,
+          selectedAssetIds: _selectedAssetIds,
+        ),
+      ),
+    );
+    if (!mounted || updatedSelection == null) {
+      return;
+    }
+    setState(() {
+      _selectedAssetIds
+        ..clear()
+        ..addAll(updatedSelection);
+    });
+  }
+
+  void _selectAssetAtDragPosition(
+    Offset localPosition,
+    List<AssetEntity> assets,
+    BoxConstraints constraints,
+  ) {
+    const double padding = 12;
+    const int columns = 5;
+    const double gap = 4;
+    final double itemSize =
+        (constraints.maxWidth - (padding * 2) - ((columns - 1) * gap)) /
+        columns;
+    final double gridX = localPosition.dx - padding;
+    final double gridY =
+        localPosition.dy - padding + _gridScrollController.offset;
+    if (gridX < 0 || gridY < 0) {
+      return;
+    }
+    final double stride = itemSize + gap;
+    final int column = (gridX / stride).floor();
+    final int row = (gridY / stride).floor();
+    if (column < 0 || column >= columns || row < 0) {
+      return;
+    }
+    final double cellX = gridX - (column * stride);
+    final double cellY = gridY - (row * stride);
+    if (cellX > itemSize || cellY > itemSize) {
+      return;
+    }
+    final int index = (row * columns) + column;
+    if (index < 0 || index >= assets.length) {
+      return;
+    }
+    final String assetId = assets[index].id;
+    if (_selectedAssetIds.contains(assetId)) {
+      return;
+    }
+    setState(() {
+      _selectedAssetIds.add(assetId);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens? tokens =
+        theme.extension<PrototypeThemeTokens>();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.bucket.path.name),
+        actions: <Widget>[
+          FutureBuilder<List<AssetEntity>>(
+            future: _assetsFuture,
+            builder: (
+              BuildContext context,
+              AsyncSnapshot<List<AssetEntity>> snapshot,
+            ) {
+              final List<AssetEntity> assets =
+                  snapshot.data ?? const <AssetEntity>[];
+              return TextButton(
+                onPressed: assets.isEmpty ? null : () => _toggleSelectAll(assets),
+                child: Text(
+                  assets.isNotEmpty && _selectedAssetIds.length == assets.length
+                      ? '取消全选'
+                      : '全选',
+                ),
+              );
+            },
+          ),
+          TextButton(
+            onPressed: _selectedAssetIds.isEmpty
+                ? null
+                : _submitSelection,
+            child: Text('导入(${_selectedAssetIds.length})'),
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<AssetEntity>>(
+        future: _assetsFuture,
+        builder: (
+          BuildContext context,
+          AsyncSnapshot<List<AssetEntity>> snapshot,
+        ) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final List<AssetEntity> assets =
+              snapshot.data ?? const <AssetEntity>[];
+          if (assets.isEmpty) {
+            return Center(
+              child: Text(
+                '这个相册里没有可导入的图片。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: tokens?.muted ?? theme.colorScheme.onSurface,
+                ),
+              ),
+            );
+          }
+          return LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              return GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (DragStartDetails details) {
+                  _selectAssetAtDragPosition(
+                    details.localPosition,
+                    assets,
+                    constraints,
+                  );
+                },
+                onPanUpdate: (DragUpdateDetails details) {
+                  _selectAssetAtDragPosition(
+                    details.localPosition,
+                    assets,
+                    constraints,
+                  );
+                },
+                child: GridView.builder(
+                  controller: _gridScrollController,
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5,
+                    mainAxisSpacing: 4,
+                    crossAxisSpacing: 4,
+                  ),
+                  itemCount: assets.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    final AssetEntity asset = assets[index];
+                    final bool selected = _selectedAssetIds.contains(asset.id);
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => _openAssetPreview(asset),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: _AssetEntityThumbnail(
+                                asset: asset,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (selected)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFFFF3B30),
+                                    width: 3,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () => _toggleAssetSelection(asset),
+                              child: Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? const Color(0xFFFF3B30)
+                                      : Colors.black.withValues(alpha: 0.34),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.92),
+                                  ),
+                                ),
+                                child: Icon(
+                                  selected
+                                      ? Icons.check_rounded
+                                      : Icons.add_rounded,
+                                  size: 15,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AssetEntityThumbnail extends StatelessWidget {
+  const _AssetEntityThumbnail({
+    required this.asset,
+    this.fit = BoxFit.cover,
+  });
+
+  final AssetEntity asset;
+  final BoxFit fit;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Uint8List?>(
+      future: asset.thumbnailDataWithSize(const ThumbnailSize(300, 300)),
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<Uint8List?> snapshot,
+      ) {
+        final Uint8List? bytes = snapshot.data;
+        if (bytes == null || bytes.isEmpty) {
+          return Container(
+            color: Colors.black.withValues(alpha: 0.06),
+            child: const Center(
+              child: Icon(Icons.image_outlined),
+            ),
+          );
+        }
+        return Image.memory(
+          bytes,
+          fit: fit,
+          gaplessPlayback: true,
+        );
+      },
+    );
+  }
+}
+
+class _AndroidImportPhotoPreviewPage extends StatefulWidget {
+  const _AndroidImportPhotoPreviewPage({
+    required this.assets,
+    required this.initialIndex,
+    required this.selectedAssetIds,
+  });
+
+  final List<AssetEntity> assets;
+  final int initialIndex;
+  final Set<String> selectedAssetIds;
+
+  @override
+  State<_AndroidImportPhotoPreviewPage> createState() =>
+      _AndroidImportPhotoPreviewPageState();
+}
+
+class _AndroidImportPhotoPreviewPageState
+    extends State<_AndroidImportPhotoPreviewPage> {
+  late final PageController _pageController;
+  late final Set<String> _selectedAssetIds;
+  late int _currentIndex;
+
+  AssetEntity get _currentAsset => widget.assets[_currentIndex];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, widget.assets.length - 1);
+    _selectedAssetIds = Set<String>.from(widget.selectedAssetIds);
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _toggleCurrentSelection() {
+    final String assetId = _currentAsset.id;
+    setState(() {
+      if (_selectedAssetIds.contains(assetId)) {
+        _selectedAssetIds.remove(assetId);
+      } else {
+        _selectedAssetIds.add(assetId);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool selected = _selectedAssetIds.contains(_currentAsset.id);
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) {
+          return;
+        }
+        Navigator.of(context).pop(_selectedAssetIds);
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            onPressed: () {
+              Navigator.of(context).pop(_selectedAssetIds);
+            },
+            icon: const Icon(Icons.close_rounded),
+          ),
+          actions: <Widget>[
+            IconButton(
+              onPressed: _toggleCurrentSelection,
+              icon: Icon(
+                selected ? Icons.check_rounded : Icons.add_rounded,
+                color: Colors.white,
+              ),
+              tooltip: selected ? '取消选中' : '选中图片',
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.assets.length,
+            onPageChanged: (int index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+            itemBuilder: (BuildContext context, int index) {
+              return _AndroidImportPreviewImage(asset: widget.assets[index]);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AndroidImportPreviewImage extends StatelessWidget {
+  const _AndroidImportPreviewImage({required this.asset});
+
+  final AssetEntity asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: FutureBuilder<File?>(
+        future: asset.originFile,
+        builder: (
+          BuildContext context,
+          AsyncSnapshot<File?> snapshot,
+        ) {
+          final File? file = snapshot.data;
+          if (file != null) {
+            return InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              child: Image.file(
+                file,
+                fit: BoxFit.contain,
+              ),
+            );
+          }
+          return FutureBuilder<Uint8List?>(
+            future: asset.originBytes,
+            builder: (
+              BuildContext context,
+              AsyncSnapshot<Uint8List?> bytesSnapshot,
+            ) {
+              final Uint8List? bytes = bytesSnapshot.data;
+              if (bytes == null || bytes.isEmpty) {
+                if (bytesSnapshot.connectionState != ConnectionState.done) {
+                  return const CircularProgressIndicator(color: Colors.white);
+                }
+                return const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white70,
+                  size: 40,
+                );
+              }
+              return InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -1930,6 +2885,7 @@ List<AlbumData> buildDemoAlbums() {
           title: '在四姑娘山的清晨',
           date: '2024年10月2日',
           note: '清晨的光压在山顶上，湖面平静如镜，四周的空气格外清新，让人心绪慢下来。',
+          tags: const <String>['山', '河流', '旅行'],
           orientation: PhotoOrientation.landscape,
           style: PhotoStyle.mountainLake,
         ),
@@ -1954,6 +2910,7 @@ List<AlbumData> buildDemoAlbums() {
           title: '草甸与牦牛',
           date: '2024年10月5日',
           note: '牦牛在草甸上慢慢移动，远处的雪山像背景布一样铺开。',
+          tags: const <String>['山', '旅行'],
           orientation: PhotoOrientation.landscape,
           style: PhotoStyle.yakField,
         ),
@@ -1992,6 +2949,7 @@ List<AlbumData> buildDemoAlbums() {
           title: '傍晚的海边',
           date: '2023年8月18日',
           note: '太阳快落下去的时候，海面像铺了一层铜色反光，空气里有一点潮湿的咸味。',
+          tags: const <String>['旅行', '夜景'],
           orientation: PhotoOrientation.landscape,
           style: PhotoStyle.sunsetSea,
         ),
@@ -2000,6 +2958,7 @@ List<AlbumData> buildDemoAlbums() {
           title: '骑楼街角',
           date: '2023年8月19日',
           note: '转过街角的时候，恰好看到暖黄色的店灯，整个巷子都显得柔软起来。',
+          tags: const <String>['城市', '旅行'],
           orientation: PhotoOrientation.portrait,
           style: PhotoStyle.cityWarm,
         ),
@@ -2090,9 +3049,9 @@ class AlbumHomePage extends StatefulWidget {
   final ValueChanged<AlbumData> onAlbumCreated;
   final DataActionCallback onExportDataPressed;
   final DataActionCallback onImportDataPressed;
-  final DataActionCallback onCustomBackgroundPressed;
-  final DataActionCallback onClearBackgroundPressed;
-  final DataActionCallback onAboutSoftwarePressed;
+  final ContextDataActionCallback onCustomBackgroundPressed;
+  final ContextDataActionCallback onClearBackgroundPressed;
+  final ContextDataActionCallback onAboutSoftwarePressed;
 
   @override
   State<AlbumHomePage> createState() => _AlbumHomePageState();
@@ -2102,6 +3061,7 @@ enum DesktopAlbumViewMode { focus, grid, compact }
 
 class _AlbumHomePageState extends State<AlbumHomePage> {
   late final PageController _pageController;
+  late final FocusNode _desktopHomeFocusNode;
   late final TextEditingController _desktopSearchController;
   late final FocusNode _desktopSearchFocusNode;
   double _currentPage = 0;
@@ -2126,6 +3086,7 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
   void initState() {
     super.initState();
     _pageController = PageController(viewportFraction: 0.72);
+    _desktopHomeFocusNode = FocusNode(debugLabel: 'desktop-home');
     _desktopSearchController = TextEditingController(text: _searchQuery);
     _desktopSearchFocusNode = FocusNode();
     _pageController.addListener(_handlePageChanged);
@@ -2133,6 +3094,7 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
 
   @override
   void dispose() {
+    _desktopHomeFocusNode.dispose();
     _desktopSearchController.dispose();
     _desktopSearchFocusNode.dispose();
     _pageController
@@ -2198,41 +3160,46 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
         ),
         child: SafeArea(
           child: isDesktop
-              ? _DesktopHomeLayout(
-                  albums: _visibleAlbums,
-                  onAlbumChanged: widget.onAlbumChanged,
-                  onAlbumDeleted: widget.onAlbumDeleted,
-                  appearance: widget.appearance,
-                  onAppearanceChanged: widget.onAppearanceChanged,
-                  onAlbumCreated: widget.onAlbumCreated,
-                  onExportDataPressed: widget.onExportDataPressed,
-                  onImportDataPressed: widget.onImportDataPressed,
-                  onCustomBackgroundPressed: widget.onCustomBackgroundPressed,
-                  onClearBackgroundPressed: widget.onClearBackgroundPressed,
-                  onAboutSoftwarePressed: widget.onAboutSoftwarePressed,
-                  section: _section,
-                  favoritePhotos: _favoritePhotos,
-                  trashPhotos: _trashPhotos,
-                  onPhotosTrashed: widget.onPhotosTrashed,
-                  onAlbumsChanged: widget.onAlbumsChanged,
-                  onTrashPhotoRestored: widget.onTrashPhotoRestored,
-                  onTrashPhotoDeleted: widget.onTrashPhotoDeleted,
-                  onTrashEmptied: widget.onTrashEmptied,
-                  searchQuery: _searchQuery,
-                  onSearchPressed: _toggleDesktopSearch,
-                  onSearchChanged: _updateSearchQuery,
-                  onSearchClosed: _closeDesktopSearch,
-                  onSectionChanged: _setSection,
-                  hasActiveSearch:
-                      _desktopSearchOpen || _searchQuery.trim().isNotEmpty,
-                  searchOpen: _desktopSearchOpen,
-                  searchController: _desktopSearchController,
-                  searchFocusNode: _desktopSearchFocusNode,
-                  desktopViewMode: _desktopViewMode,
-                  onDesktopViewToggle: _toggleDesktopViewMode,
-                  currentPage: _currentPage,
-                  controller: _pageController,
-                  onDesktopFocusNavigate: _navigateDesktopFocus,
+              ? Focus(
+                  autofocus: true,
+                  focusNode: _desktopHomeFocusNode,
+                  onKeyEvent: _handleDesktopHomeKeyEvent,
+                  child: _DesktopHomeLayout(
+                    albums: _visibleAlbums,
+                    onAlbumChanged: widget.onAlbumChanged,
+                    onAlbumDeleted: widget.onAlbumDeleted,
+                    appearance: widget.appearance,
+                    onAppearanceChanged: widget.onAppearanceChanged,
+                    onAlbumCreated: widget.onAlbumCreated,
+                    onExportDataPressed: widget.onExportDataPressed,
+                    onImportDataPressed: widget.onImportDataPressed,
+                    onCustomBackgroundPressed: widget.onCustomBackgroundPressed,
+                    onClearBackgroundPressed: widget.onClearBackgroundPressed,
+                    onAboutSoftwarePressed: widget.onAboutSoftwarePressed,
+                    section: _section,
+                    favoritePhotos: _favoritePhotos,
+                    trashPhotos: _trashPhotos,
+                    onPhotosTrashed: widget.onPhotosTrashed,
+                    onAlbumsChanged: widget.onAlbumsChanged,
+                    onTrashPhotoRestored: widget.onTrashPhotoRestored,
+                    onTrashPhotoDeleted: widget.onTrashPhotoDeleted,
+                    onTrashEmptied: widget.onTrashEmptied,
+                    searchQuery: _searchQuery,
+                    onSearchPressed: _toggleDesktopSearch,
+                    onSearchChanged: _updateSearchQuery,
+                    onSearchClosed: _closeDesktopSearch,
+                    onSectionChanged: _setSection,
+                    hasActiveSearch:
+                        _desktopSearchOpen || _searchQuery.trim().isNotEmpty,
+                    searchOpen: _desktopSearchOpen,
+                    searchController: _desktopSearchController,
+                    searchFocusNode: _desktopSearchFocusNode,
+                    desktopViewMode: _desktopViewMode,
+                    onDesktopViewToggle: _toggleDesktopViewMode,
+                    currentPage: _currentPage,
+                    controller: _pageController,
+                    onDesktopFocusNavigate: _navigateDesktopFocus,
+                  ),
                 )
               : _MobileHomeLayout(
                   albums: _visibleAlbums,
@@ -2356,6 +3323,28 @@ class _AlbumHomePageState extends State<AlbumHomePage> {
       _desktopSearchOpen = false;
     });
   }
+
+  KeyEventResult _handleDesktopHomeKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (_desktopSearchOpen) {
+      return KeyEventResult.ignored;
+    }
+    if (_section != HomeSection.albums ||
+        _desktopViewMode != DesktopAlbumViewMode.focus) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _navigateDesktopFocus(-1);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _navigateDesktopFocus(1);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 }
 
 class _DesktopHomeLayout extends StatelessWidget {
@@ -2410,9 +3399,9 @@ class _DesktopHomeLayout extends StatelessWidget {
   final ValueChanged<AlbumData> onAlbumCreated;
   final DataActionCallback onExportDataPressed;
   final DataActionCallback onImportDataPressed;
-  final DataActionCallback onCustomBackgroundPressed;
-  final DataActionCallback onClearBackgroundPressed;
-  final DataActionCallback onAboutSoftwarePressed;
+  final ContextDataActionCallback onCustomBackgroundPressed;
+  final ContextDataActionCallback onClearBackgroundPressed;
+  final ContextDataActionCallback onAboutSoftwarePressed;
   final HomeSection section;
   final ValueChanged<HomeSection> onSectionChanged;
   final String searchQuery;
@@ -2658,9 +3647,9 @@ class _MobileHomeLayout extends StatelessWidget {
   final ValueChanged<AlbumData> onAlbumCreated;
   final DataActionCallback onExportDataPressed;
   final DataActionCallback onImportDataPressed;
-  final DataActionCallback onCustomBackgroundPressed;
-  final DataActionCallback onClearBackgroundPressed;
-  final DataActionCallback onAboutSoftwarePressed;
+  final ContextDataActionCallback onCustomBackgroundPressed;
+  final ContextDataActionCallback onClearBackgroundPressed;
+  final ContextDataActionCallback onAboutSoftwarePressed;
   final HomeSection section;
   final DesktopAlbumViewMode desktopViewMode;
   final String searchQuery;
@@ -2692,7 +3681,7 @@ class _MobileHomeLayout extends StatelessWidget {
         ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+            padding: const EdgeInsets.fromLTRB(0, 2, 0, 0),
             child: _ShelfScene(
               albums: albums,
               favoritePhotos: favoritePhotos,
@@ -2950,77 +3939,101 @@ class _HomeHeader extends StatelessWidget {
   final VoidCallback onCreateAlbum;
   final DataActionCallback onExportDataPressed;
   final DataActionCallback onImportDataPressed;
-  final DataActionCallback onCustomBackgroundPressed;
-  final DataActionCallback onClearBackgroundPressed;
-  final DataActionCallback onAboutSoftwarePressed;
+  final ContextDataActionCallback onCustomBackgroundPressed;
+  final ContextDataActionCallback onClearBackgroundPressed;
+  final ContextDataActionCallback onAboutSoftwarePressed;
   final bool desktop;
 
   @override
   Widget build(BuildContext context) {
+    final Widget searchField = TextFormField(
+      initialValue: searchQuery,
+      onChanged: onSearchChanged,
+      style: const TextStyle(fontSize: 14),
+      decoration: InputDecoration(
+        hintText: '搜索相册',
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+        prefixIcon: const Icon(Icons.search_rounded, size: 18),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 36,
+          minHeight: 36,
+        ),
+        filled: true,
+        fillColor: Theme.of(
+          context,
+        ).colorScheme.surface.withValues(alpha: 0.94),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.14),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.14),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.primary,
+            width: 1.1,
+          ),
+        ),
+      ),
+    );
+    final Widget createAlbumButton = desktop
+        ? FilledButton.icon(
+            onPressed: onCreateAlbum,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('新相册'),
+          )
+        : IconButton(
+            tooltip: '新相册',
+            onPressed: onCreateAlbum,
+            style: IconButton.styleFrom(
+              minimumSize: const Size(38, 38),
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surface.withValues(alpha: 0.94),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.14),
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.add_rounded, size: 20),
+          );
     return Row(
       mainAxisAlignment: MainAxisAlignment.start,
       children: <Widget>[
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: desktop ? 210 : 220),
-          child: TextFormField(
-            initialValue: searchQuery,
-            onChanged: onSearchChanged,
-            style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              hintText: '搜索',
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-              prefixIcon: const Icon(Icons.search_rounded, size: 18),
-              prefixIconConstraints: const BoxConstraints(
-                minWidth: 36,
-                minHeight: 36,
-              ),
-              filled: true,
-              fillColor: Theme.of(
-                context,
-              ).colorScheme.surface.withValues(alpha: 0.94),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.14),
-                ),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.14),
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: Theme.of(context).colorScheme.primary,
-                  width: 1.1,
-                ),
-              ),
-            ),
-          ),
-        ),
+        desktop
+            ? ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 210),
+                child: searchField,
+              )
+            : Expanded(child: searchField),
         const SizedBox(width: 10),
-        FilledButton.icon(
-          onPressed: onCreateAlbum,
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(0, 36),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(5),
-            ),
-          ),
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('新相册'),
-        ),
+        createAlbumButton,
       ],
     );
   }
@@ -3055,9 +4068,9 @@ class _DesktopSidebar extends StatelessWidget {
   final ValueChanged<PrototypeAppearance> onAppearanceChanged;
   final DataActionCallback onExportDataPressed;
   final DataActionCallback onImportDataPressed;
-  final DataActionCallback onCustomBackgroundPressed;
-  final DataActionCallback onClearBackgroundPressed;
-  final DataActionCallback onAboutSoftwarePressed;
+  final ContextDataActionCallback onCustomBackgroundPressed;
+  final ContextDataActionCallback onClearBackgroundPressed;
+  final ContextDataActionCallback onAboutSoftwarePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -4926,15 +5939,378 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   late AlbumData _album;
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
+  late final TextEditingController _photoSearchController;
+  late final ScrollController _mobilePhotoSectionScrollController;
   bool _isSelectionMode = false;
   bool _isImportingPhotos = false;
   bool _isEditingAlbumText = false;
+  bool _isThumbnailMode = false;
+  String _photoSearchQuery = '';
+  String? _selectedTagFilter;
   final Set<String> _selectedPhotoIds = <String>{};
+  final Map<String, GlobalKey> _photoSectionKeys = <String, GlobalKey>{};
+  Timer? _timelineOverlayTimer;
+  bool _showTimelineOverlay = false;
+  bool _isDraggingTimeline = false;
+  int _timelineSectionIndex = 0;
+
+  List<PhotoData> get _filteredPhotos {
+    return _album.photos.where((PhotoData photo) {
+      final bool matchesSearch = photoMatchesSearchQuery(
+        photo,
+        _photoSearchQuery,
+        album: _album,
+      );
+      final bool matchesTag =
+          _selectedTagFilter == null ||
+          photo.tags.any(
+            (String tag) =>
+                tag.toLowerCase() == _selectedTagFilter!.toLowerCase(),
+          );
+      return matchesSearch && matchesTag;
+    }).toList();
+  }
+
+  List<String> get _availableTags {
+    return sanitizePhotoTags(
+      _album.photos.expand((PhotoData photo) => photo.tags),
+    )..sort();
+  }
 
   List<PhotoData> get _selectedPhotos {
     return _album.photos.where((PhotoData photo) {
       return _selectedPhotoIds.contains(photo.id);
     }).toList();
+  }
+
+  List<_AlbumPhotoDateSection> get _photoDateSections {
+    final Map<String, int> photoOrder = <String, int>{
+      for (int index = 0; index < _album.photos.length; index++)
+        _album.photos[index].id: index,
+    };
+    final List<PhotoData> orderedPhotos = List<PhotoData>.from(_filteredPhotos);
+    orderedPhotos.sort((PhotoData a, PhotoData b) {
+      final DateTime dateA = _resolvePhotoSectionDate(a);
+      final DateTime dateB = _resolvePhotoSectionDate(b);
+      final int dateCompare = dateB.compareTo(dateA);
+      if (dateCompare != 0) {
+        return dateCompare;
+      }
+      return (photoOrder[a.id] ?? 0).compareTo(photoOrder[b.id] ?? 0);
+    });
+    final Map<String, List<PhotoData>> grouped = <String, List<PhotoData>>{};
+    final Map<String, DateTime> sectionDates = <String, DateTime>{};
+    for (final PhotoData photo in orderedPhotos) {
+      final DateTime resolvedDate = _resolvePhotoSectionDate(photo);
+      final DateTime dayKey = DateTime(
+        resolvedDate.year,
+        resolvedDate.month,
+        resolvedDate.day,
+      );
+      final String key = dayKey.toIso8601String();
+      grouped.putIfAbsent(key, () => <PhotoData>[]).add(photo);
+      sectionDates[key] = dayKey;
+    }
+    final List<_AlbumPhotoDateSection> sections = grouped.entries.map((
+      MapEntry<String, List<PhotoData>> entry,
+    ) {
+      final DateTime sectionDate = sectionDates[entry.key]!;
+      return _AlbumPhotoDateSection(
+        key: entry.key,
+        date: sectionDate,
+        label: formatAlbumDate(sectionDate),
+        photos: entry.value,
+      );
+    }).toList();
+    sections.sort(
+      (_AlbumPhotoDateSection a, _AlbumPhotoDateSection b) =>
+          b.date.compareTo(a.date),
+    );
+    final Set<String> activeKeys =
+        sections.map((_AlbumPhotoDateSection section) => section.key).toSet();
+    _photoSectionKeys.removeWhere(
+      (String key, GlobalKey value) => !activeKeys.contains(key),
+    );
+    for (final _AlbumPhotoDateSection section in sections) {
+      _photoSectionKeys.putIfAbsent(section.key, () => GlobalKey());
+    }
+    if (sections.isNotEmpty) {
+      _timelineSectionIndex =
+          _timelineSectionIndex.clamp(0, sections.length - 1);
+    }
+    return sections;
+  }
+
+  DateTime _resolvePhotoSectionDate(PhotoData photo) {
+    final DateTime? parsedPhotoDate = parseChineseDate(photo.date.trim());
+    if (parsedPhotoDate != null) {
+      return parsedPhotoDate;
+    }
+    return DateTime.tryParse(_album.updatedAt) ??
+        DateTime.tryParse(_album.createdAt) ??
+        DateTime.now();
+  }
+
+  Widget _buildPhotoSections(BuildContext context) {
+    final List<_AlbumPhotoDateSection> sections = _photoDateSections;
+    if (sections.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: sections.map((_AlbumPhotoDateSection section) {
+        return Padding(
+          key: _photoSectionKeys[section.key],
+          padding: const EdgeInsets.only(bottom: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _AlbumDateSectionHeader(label: section.label),
+              const SizedBox(height: 10),
+              _isThumbnailMode
+                  ? ThumbnailPhotoGrid(
+                      album: _album,
+                      photos: section.photos,
+                      onAlbumChanged: _replaceAlbum,
+                      onPhotosTrashed: widget.onPhotosTrashed,
+                      selectionMode: _isSelectionMode,
+                      selectedPhotoIds: _selectedPhotoIds,
+                      onToggleSelection: _togglePhotoSelection,
+                      onStartSelection: _startSelection,
+                      scrollable: false,
+                    )
+                  : MasonryPhotoGrid(
+                      album: _album,
+                      photos: section.photos,
+                      onAlbumChanged: _replaceAlbum,
+                      onPhotosTrashed: widget.onPhotosTrashed,
+                      selectionMode: _isSelectionMode,
+                      selectedPhotoIds: _selectedPhotoIds,
+                      onToggleSelection: _togglePhotoSelection,
+                      onStartSelection: _startSelection,
+                      scrollable: false,
+                    ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  void _handleTimelineScroll() {
+    if (_isDraggingTimeline) {
+      return;
+    }
+    _recalculateTimelineSectionIndex();
+    _showTimelineTemporarily();
+  }
+
+  void _showTimelineTemporarily() {
+    _timelineOverlayTimer?.cancel();
+    if (!_showTimelineOverlay) {
+      setState(() {
+        _showTimelineOverlay = true;
+      });
+    }
+    _timelineOverlayTimer = Timer(const Duration(milliseconds: 850), () {
+      if (!mounted || _isDraggingTimeline) {
+        return;
+      }
+      setState(() {
+        _showTimelineOverlay = false;
+      });
+    });
+  }
+
+  void _recalculateTimelineSectionIndex() {
+    final List<_AlbumPhotoDateSection> sections = _photoDateSections;
+    if (sections.isEmpty) {
+      return;
+    }
+    final ScrollPosition? position =
+        _mobilePhotoSectionScrollController.hasClients
+            ? _mobilePhotoSectionScrollController.position
+            : null;
+    if (position == null) {
+      return;
+    }
+    final BuildContext? viewportContext = position.context.notificationContext;
+    final RenderObject? viewportObject = viewportContext?.findRenderObject();
+    if (viewportObject is! RenderBox) {
+      return;
+    }
+    int bestIndex = 0;
+    double bestTop = double.negativeInfinity;
+    for (int index = 0; index < sections.length; index++) {
+      final GlobalKey? key = _photoSectionKeys[sections[index].key];
+      final BuildContext? sectionContext = key?.currentContext;
+      if (sectionContext == null) {
+        continue;
+      }
+      final RenderObject? renderObject = sectionContext.findRenderObject();
+      if (renderObject is! RenderBox) {
+        continue;
+      }
+      final Offset offset = renderObject.localToGlobal(
+        Offset.zero,
+        ancestor: viewportObject,
+      );
+      if (offset.dy <= 24 && offset.dy > bestTop) {
+        bestTop = offset.dy;
+        bestIndex = index;
+      }
+    }
+    if (_timelineSectionIndex != bestIndex) {
+      setState(() {
+        _timelineSectionIndex = bestIndex;
+      });
+    }
+  }
+
+  Future<void> _jumpToTimelineSection(int index) async {
+    final List<_AlbumPhotoDateSection> sections = _photoDateSections;
+    if (sections.isEmpty) {
+      return;
+    }
+    final int safeIndex = index.clamp(0, sections.length - 1);
+    final GlobalKey? key = _photoSectionKeys[sections[safeIndex].key];
+    final BuildContext? targetContext = key?.currentContext;
+    if (targetContext == null) {
+      return;
+    }
+    setState(() {
+      _timelineSectionIndex = safeIndex;
+    });
+    await Scrollable.ensureVisible(
+      targetContext,
+      alignment: 0.02,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Widget _buildMobileTimelineScroller(BuildContext context) {
+    final List<_AlbumPhotoDateSection> sections = _photoDateSections;
+    if (sections.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final ThemeData theme = Theme.of(context);
+    final _AlbumPhotoDateSection activeSection = sections[
+        _timelineSectionIndex.clamp(0, sections.length - 1)];
+    return Positioned(
+      top: 0,
+      right: 4,
+      bottom: 0,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: _showTimelineOverlay || _isDraggingTimeline ? 1 : 0,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 168),
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const <BoxShadow>[
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 12,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Text(
+                activeSection.label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF332720),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              return GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onVerticalDragStart: (_) {
+                  _timelineOverlayTimer?.cancel();
+                  setState(() {
+                    _isDraggingTimeline = true;
+                    _showTimelineOverlay = true;
+                  });
+                },
+                onVerticalDragUpdate: (DragUpdateDetails details) {
+                  final double fraction =
+                      (details.localPosition.dy / constraints.maxHeight)
+                          .clamp(0.0, 1.0);
+                  final int index =
+                      ((sections.length - 1) * fraction).round();
+                  _jumpToTimelineSection(index);
+                },
+                onVerticalDragEnd: (_) {
+                  setState(() {
+                    _isDraggingTimeline = false;
+                  });
+                  _showTimelineTemporarily();
+                },
+                onVerticalDragCancel: () {
+                  setState(() {
+                    _isDraggingTimeline = false;
+                  });
+                  _showTimelineTemporarily();
+                },
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 160),
+                  opacity: _showTimelineOverlay || _isDraggingTimeline
+                      ? 0.96
+                      : 0.28,
+                  child: Container(
+                    width: 26,
+                    alignment: Alignment.center,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: SizedBox(
+                        width: 4,
+                        child: Align(
+                          alignment: Alignment(
+                            0,
+                            sections.length <= 1
+                                ? -1
+                                : ((_timelineSectionIndex /
+                                                    (sections.length - 1)) *
+                                                2) -
+                                            1,
+                          ),
+                          child: Container(
+                            width: 4,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.92,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -4943,12 +6319,20 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     _album = widget.album;
     _titleController = TextEditingController(text: _album.title);
     _descriptionController = TextEditingController(text: _album.description);
+    _photoSearchController = TextEditingController();
+    _mobilePhotoSectionScrollController = ScrollController();
+    _mobilePhotoSectionScrollController.addListener(_handleTimelineScroll);
   }
 
   @override
   void dispose() {
+    _timelineOverlayTimer?.cancel();
+    _mobilePhotoSectionScrollController
+        .removeListener(_handleTimelineScroll);
+    _mobilePhotoSectionScrollController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
+    _photoSearchController.dispose();
     super.dispose();
   }
 
@@ -4998,7 +6382,11 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                   ),
                 ],
               )
-            : null,
+            : Text(
+                _album.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
         actions: <Widget>[
           if (!_isSelectionMode)
             TextButton.icon(
@@ -5046,13 +6434,40 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
               icon: const Icon(Icons.content_copy_rounded),
             )
           else if (isDesktop)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: TextButton(
-                onPressed: _isImportingPhotos ? null : _importPhotosFromFiles,
-                child: Text(_isImportingPhotos ? '导入中...' : '添加照片'),
+            ...<Widget>[
+              TextButton.icon(
+                onPressed: _openMobileAlbumEditorPage,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('编辑相册'),
               ),
-            ),
+              TextButton.icon(
+                onPressed: _changeAlbumCover,
+                icon: const Icon(Icons.photo_outlined),
+                label: const Text('修改封面'),
+              ),
+              TextButton.icon(
+                onPressed: _isImportingPhotos ? null : _importPhotosFromFiles,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: Text(_isImportingPhotos ? '导入中...' : '添加照片'),
+              ),
+              TextButton.icon(
+                onPressed: _toggleThumbnailMode,
+                icon: Icon(
+                  _isThumbnailMode
+                      ? Icons.view_agenda_rounded
+                      : Icons.grid_view_rounded,
+                ),
+                label: Text(_isThumbnailMode ? '普通模式' : '缩略图模式'),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: TextButton.icon(
+                  onPressed: _deleteAlbum,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('删除相册'),
+                ),
+              ),
+            ],
           if (!_isSelectionMode && !isDesktop)
             PopupMenuButton<String>(
               tooltip: '更多操作',
@@ -5066,6 +6481,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 if (value == 'add-photos') {
                   _importPhotosFromFiles();
                 }
+                if (value == 'toggle-thumbnail') {
+                  _toggleThumbnailMode();
+                }
                 if (value == 'delete-album') {
                   _deleteAlbum();
                 }
@@ -5074,7 +6492,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                   <PopupMenuEntry<String>>[
                     const PopupMenuItem<String>(
                       value: 'edit',
-                      child: Text('编辑'),
+                      child: Text('编辑相册'),
                     ),
                     const PopupMenuItem<String>(
                       value: 'change-cover',
@@ -5084,6 +6502,10 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       value: 'add-photos',
                       enabled: !_isImportingPhotos,
                       child: Text(_isImportingPhotos ? '导入中...' : '添加照片'),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'toggle-thumbnail',
+                      child: Text(_isThumbnailMode ? '普通浏览模式' : '缩略图模式'),
                     ),
                     const PopupMenuItem<String>(
                       value: 'delete-album',
@@ -5160,18 +6582,19 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                         const _SectionMarker(number: 5),
                       ],
                     ),
+                    const SizedBox(height: 10),
+                    _buildPhotoSearchAndFilter(context, desktop: true),
                     const SizedBox(height: 14),
                     Expanded(
                       child: Stack(
                         children: <Widget>[
-                          MasonryPhotoGrid(
-                            album: _album,
-                            onAlbumChanged: _replaceAlbum,
-                            onPhotosTrashed: widget.onPhotosTrashed,
-                            selectionMode: _isSelectionMode,
-                            selectedPhotoIds: _selectedPhotoIds,
-                            onToggleSelection: _togglePhotoSelection,
-                            onStartSelection: _startSelection,
+                          Scrollbar(
+                            thumbVisibility: true,
+                            child: SingleChildScrollView(
+                              child: _buildPhotoSections(
+                                context,
+                              ),
+                            ),
                           ),
                           Positioned.fill(
                             child: IgnorePointer(
@@ -5196,68 +6619,87 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 ),
               )
             : SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  0,
-                  8,
-                  0,
-                  _isSelectionMode ? 88 : 16,
-                ),
-                child: Column(
+                child: Stack(
                   children: <Widget>[
-                    Stack(
-                      children: <Widget>[
-                        _buildMobileAlbumHeader(context),
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                border: _showDebugSectionFrames
-                                    ? Border.all(
-                                        color: const Color(0xFFE53935),
-                                        width: 2,
-                                      )
-                                    : null,
-                                borderRadius: BorderRadius.circular(5),
-                              ),
-                            ),
-                          ),
+                    NotificationListener<ScrollNotification>(
+                      onNotification: (ScrollNotification notification) {
+                        if (notification is ScrollUpdateNotification ||
+                            notification is UserScrollNotification) {
+                          _handleTimelineScroll();
+                        }
+                        return false;
+                      },
+                      child: SingleChildScrollView(
+                        controller: _mobilePhotoSectionScrollController,
+                        padding: EdgeInsets.fromLTRB(
+                          0,
+                          8,
+                          0,
+                          _isSelectionMode ? 88 : 16,
                         ),
-                        const _SectionMarker(number: 5),
-                      ],
-                    ),
-                    Transform.translate(
-                      offset: const Offset(0, -10),
-                      child: Stack(
-                        children: <Widget>[
-                          MasonryPhotoGrid(
-                            album: _album,
-                            onAlbumChanged: _replaceAlbum,
-                            onPhotosTrashed: widget.onPhotosTrashed,
-                            selectionMode: _isSelectionMode,
-                            selectedPhotoIds: _selectedPhotoIds,
-                            onToggleSelection: _togglePhotoSelection,
-                            onStartSelection: _startSelection,
-                            scrollable: false,
-                          ),
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  border: _showDebugSectionFrames
-                                      ? Border.all(
-                                          color: const Color(0xFFE53935),
-                                          width: 2,
-                                        )
-                                      : null,
-                                  borderRadius: BorderRadius.circular(5),
+                        child: Column(
+                          children: <Widget>[
+                            Stack(
+                              children: <Widget>[
+                                _buildMobileAlbumHeader(context),
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: _showDebugSectionFrames
+                                            ? Border.all(
+                                                color: const Color(0xFFE53935),
+                                                width: 2,
+                                              )
+                                            : null,
+                                        borderRadius: BorderRadius.circular(5),
+                                      ),
+                                    ),
+                                  ),
                                 ),
+                                const _SectionMarker(number: 5),
+                              ],
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
+                              child: _buildPhotoSearchAndFilter(
+                                context,
+                                desktop: false,
                               ),
                             ),
-                          ),
-                          const _SectionMarker(number: 6),
-                        ],
+                            const SizedBox(height: 8),
+                            Transform.translate(
+                              offset: const Offset(0, 0),
+                              child: Stack(
+                                children: <Widget>[
+                                  _buildPhotoSections(context),
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          border: _showDebugSectionFrames
+                                              ? Border.all(
+                                                  color: const Color(
+                                                    0xFFE53935,
+                                                  ),
+                                                  width: 2,
+                                                )
+                                              : null,
+                                          borderRadius:
+                                              BorderRadius.circular(5),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const _SectionMarker(number: 6),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
+                    _buildMobileTimelineScroller(context),
                   ],
                 ),
               ),
@@ -5269,48 +6711,44 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     setState(() {
       _isImportingPhotos = true;
     });
-    final FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: true,
-      lockParentWindow: true,
-    );
-    if (!mounted) {
-      return;
-    }
-    if (result == null || result.files.isEmpty) {
-      setState(() {
-        _isImportingPhotos = false;
-      });
-      return;
-    }
-
     final List<PhotoData> importedPhotos = <PhotoData>[];
     try {
-      for (final PlatformFile file in result.files) {
-        final String? sourcePath = file.path;
-        if (sourcePath == null || sourcePath.isEmpty) {
-          continue;
+      if (Platform.isAndroid) {
+        importedPhotos.addAll(await _importPhotosFromAndroidAlbums());
+      } else {
+        final FilePickerResult? result = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          allowMultiple: true,
+          lockParentWindow: true,
+        );
+        if (result != null && result.files.isNotEmpty) {
+          for (final PlatformFile file in result.files) {
+            final String? sourcePath = file.path;
+            if (sourcePath == null || sourcePath.isEmpty) {
+              continue;
+            }
+            final XFile image = XFile(sourcePath);
+            final String storedPath = await LocalAlbumStore.persistPickedImage(
+              image,
+              albumId: _album.id,
+            );
+            final DateTime detectedDate = await resolvePhotoDate(sourcePath);
+            final PhotoOrientation orientation = await detectPhotoOrientation(
+              storedPath,
+            );
+            importedPhotos.add(
+              PhotoData(
+                id: 'local-${DateTime.now().microsecondsSinceEpoch}-${importedPhotos.length}',
+                title: derivePhotoTitleFromPath(sourcePath),
+                date: formatAlbumDate(detectedDate),
+                note: '',
+                orientation: orientation,
+                style: _album.style,
+                imagePath: storedPath,
+              ),
+            );
+          }
         }
-        final XFile image = XFile(sourcePath);
-        final String storedPath = await LocalAlbumStore.persistPickedImage(
-          image,
-          albumId: _album.id,
-        );
-        final DateTime detectedDate = await resolvePhotoDate(sourcePath);
-        final PhotoOrientation orientation = await detectPhotoOrientation(
-          storedPath,
-        );
-        importedPhotos.add(
-          PhotoData(
-            id: 'local-${DateTime.now().microsecondsSinceEpoch}-${importedPhotos.length}',
-            title: derivePhotoTitleFromPath(sourcePath),
-            date: formatAlbumDate(detectedDate),
-            note: '',
-            orientation: orientation,
-            style: _album.style,
-            imagePath: storedPath,
-          ),
-        );
       }
     } catch (_) {
       for (final PhotoData photo in importedPhotos) {
@@ -5349,12 +6787,95 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     showPrototypeMessage(context, '已导入 ${importedPhotos.length} 张照片');
   }
 
+  Future<List<PhotoData>> _importPhotosFromAndroidAlbums() async {
+    final PermissionState permissionState =
+        await PhotoManager.requestPermissionExtend(
+      requestOption: const PermissionRequestOption(
+        androidPermission: AndroidPermission(
+          type: RequestType.image,
+          mediaLocation: false,
+        ),
+      ),
+    );
+    if (!mounted) {
+      return const <PhotoData>[];
+    }
+    final bool hasAccess =
+        permissionState == PermissionState.authorized ||
+        permissionState == PermissionState.limited;
+    if (!hasAccess) {
+      showPrototypeMessage(context, '需要允许读取图片权限后才能按系统相册导入。');
+      return const <PhotoData>[];
+    }
+    final List<AssetEntity>? selectedAssets =
+        await Navigator.of(context).push<List<AssetEntity>>(
+      MaterialPageRoute<List<AssetEntity>>(
+        builder: (BuildContext context) => const _AndroidImportBucketPickerPage(),
+      ),
+    );
+    if (!mounted || selectedAssets == null || selectedAssets.isEmpty) {
+      return const <PhotoData>[];
+    }
+    final List<PhotoData> importedPhotos = <PhotoData>[];
+    for (final AssetEntity asset in selectedAssets) {
+      final File? sourceFile = await asset.originFile;
+      String storedPath;
+      if (sourceFile != null && await sourceFile.exists()) {
+        storedPath = await LocalAlbumStore.persistPickedImage(
+          XFile(sourceFile.path),
+          albumId: _album.id,
+        );
+      } else {
+        final Uint8List? bytes = await asset.originBytes;
+        if (bytes == null || bytes.isEmpty) {
+          continue;
+        }
+        final String sourceName = asset.title ?? await asset.titleAsync;
+        storedPath = await LocalAlbumStore.persistImageBytes(
+          bytes,
+          albumId: _album.id,
+          sourceName: sourceName,
+        );
+      }
+      final PhotoOrientation orientation =
+          asset.width >= asset.height
+              ? PhotoOrientation.landscape
+              : PhotoOrientation.portrait;
+      final String sourceName = asset.title ?? await asset.titleAsync;
+      importedPhotos.add(
+        PhotoData(
+          id: 'local-${DateTime.now().microsecondsSinceEpoch}-${importedPhotos.length}',
+          title: derivePhotoTitleFromPath(sourceName),
+          date: formatAlbumDate(
+            asset.createDateSecond != null && asset.createDateSecond! > 0
+                ? asset.createDateTime
+                : asset.modifiedDateTime,
+          ),
+          note: '',
+          orientation: orientation,
+          style: _album.style,
+          imagePath: storedPath,
+        ),
+      );
+    }
+    return importedPhotos;
+  }
+
   void _replaceAlbum(AlbumData album) {
     setState(() {
       _album = album;
       if (!_isEditingAlbumText) {
         _titleController.text = album.title;
         _descriptionController.text = album.description;
+      }
+      if (_selectedTagFilter != null &&
+          !_album.photos.any(
+            (PhotoData photo) => photo.tags.any(
+              (String tag) =>
+                  tag.toLowerCase() == _selectedTagFilter!.toLowerCase(),
+            ),
+          )) {
+        _selectedTagFilter = null;
       }
       _selectedPhotoIds.removeWhere((String id) {
         return !_album.photos.any((PhotoData photo) => photo.id == id);
@@ -5393,6 +6914,77 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       _descriptionController.text = updatedAlbum.description;
     });
     widget.onAlbumChanged(updatedAlbum);
+  }
+
+  Widget _buildPhotoSearchAndFilter(
+    BuildContext context, {
+    required bool desktop,
+  }) {
+    final List<String> tags = _availableTags;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        TextField(
+          controller: _photoSearchController,
+          onChanged: (String value) {
+            setState(() {
+              _photoSearchQuery = value;
+            });
+          },
+          decoration: InputDecoration(
+            hintText: '搜索照片标题、备注或标签',
+            isDense: true,
+            prefixIcon: const Icon(Icons.search_rounded, size: 18),
+            suffixIcon: _photoSearchQuery.trim().isEmpty
+                ? null
+                : IconButton(
+                    onPressed: () {
+                      _photoSearchController.clear();
+                      setState(() {
+                        _photoSearchQuery = '';
+                      });
+                    },
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+          ),
+        ),
+        if (tags.isNotEmpty) ...<Widget>[
+          SizedBox(height: desktop ? 10 : 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: <Widget>[
+                _AlbumFilterChip(
+                  label: '全部',
+                  selected: _selectedTagFilter == null,
+                  onTap: () {
+                    setState(() {
+                      _selectedTagFilter = null;
+                    });
+                  },
+                ),
+                for (final String tag in tags) ...<Widget>[
+                  const SizedBox(width: 8),
+                  _AlbumFilterChip(
+                    label: tag,
+                    selected:
+                        _selectedTagFilter?.toLowerCase() == tag.toLowerCase(),
+                    onTap: () {
+                      setState(() {
+                        _selectedTagFilter =
+                            _selectedTagFilter?.toLowerCase() == tag.toLowerCase()
+                            ? null
+                            : tag;
+                      });
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Future<void> _openMobileAlbumEditorPage() async {
@@ -5486,6 +7078,12 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     setState(() {
       _isSelectionMode = true;
       _selectedPhotoIds.clear();
+    });
+  }
+
+  void _toggleThumbnailMode() {
+    setState(() {
+      _isThumbnailMode = !_isThumbnailMode;
     });
   }
 
@@ -5920,6 +7518,7 @@ class MasonryPhotoGrid extends StatelessWidget {
     required this.selectedPhotoIds,
     required this.onToggleSelection,
     required this.onStartSelection,
+    this.photos,
     this.scrollable = true,
     super.key,
   });
@@ -5931,6 +7530,7 @@ class MasonryPhotoGrid extends StatelessWidget {
   final Set<String> selectedPhotoIds;
   final ValueChanged<PhotoData> onToggleSelection;
   final ValueChanged<PhotoData> onStartSelection;
+  final List<PhotoData>? photos;
   final bool scrollable;
 
   @override
@@ -5945,13 +7545,14 @@ class MasonryPhotoGrid extends StatelessWidget {
             : 2;
         final double gap = 6;
         final double itemWidth = (width - ((columns - 1) * gap)) / columns;
+        final List<PhotoData> displayPhotos = photos ?? album.photos;
         final List<List<PhotoData>> lanes = List<List<PhotoData>>.generate(
           columns,
           (_) => <PhotoData>[],
         );
         final List<double> heights = List<double>.filled(columns, 0);
 
-        for (final PhotoData photo in album.photos) {
+        for (final PhotoData photo in displayPhotos) {
           int lane = 0;
           for (int index = 1; index < columns; index++) {
             if (heights[index] < heights[lane]) {
@@ -5991,7 +7592,9 @@ class MasonryPhotoGrid extends StatelessWidget {
                                 return PhotoDetailPage(
                                   album: album,
                                   photos: album.photos,
-                                  initialIndex: album.photos.indexOf(photo),
+                                  initialIndex: album.photos.indexWhere(
+                                    (PhotoData item) => item.id == photo.id,
+                                  ),
                                   onAlbumChanged: onAlbumChanged,
                                   onPhotosTrashed: onPhotosTrashed,
                                 );
@@ -6021,6 +7624,143 @@ class MasonryPhotoGrid extends StatelessWidget {
         ? 1.26
         : 0.78;
     return (width * ratio) + 34;
+  }
+}
+
+class ThumbnailPhotoGrid extends StatelessWidget {
+  const ThumbnailPhotoGrid({
+    required this.album,
+    required this.onAlbumChanged,
+    required this.onPhotosTrashed,
+    required this.selectionMode,
+    required this.selectedPhotoIds,
+    required this.onToggleSelection,
+    required this.onStartSelection,
+    this.photos,
+    this.scrollable = true,
+    super.key,
+  });
+
+  final AlbumData album;
+  final ValueChanged<AlbumData> onAlbumChanged;
+  final ValueChanged<List<TrashPhotoEntry>> onPhotosTrashed;
+  final bool selectionMode;
+  final Set<String> selectedPhotoIds;
+  final ValueChanged<PhotoData> onToggleSelection;
+  final ValueChanged<PhotoData> onStartSelection;
+  final List<PhotoData>? photos;
+  final bool scrollable;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<PhotoData> displayPhotos = photos ?? album.photos;
+    final Widget grid = LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        const int columns = 5;
+        const double gap = 3;
+        final double itemSize =
+            (constraints.maxWidth - ((columns - 1) * gap)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: displayPhotos.map((PhotoData photo) {
+            return SizedBox(
+              width: itemSize,
+              height: itemSize,
+              child: _ThumbnailPhotoTile(
+                photo: photo,
+                selected: selectedPhotoIds.contains(photo.id),
+                selectionMode: selectionMode,
+                onTap: () {
+                  if (selectionMode) {
+                    onToggleSelection(photo);
+                    return;
+                  }
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (BuildContext context) {
+                        return PhotoDetailPage(
+                          album: album,
+                          photos: album.photos,
+                          initialIndex: album.photos.indexWhere(
+                            (PhotoData item) => item.id == photo.id,
+                          ),
+                          onAlbumChanged: onAlbumChanged,
+                          onPhotosTrashed: onPhotosTrashed,
+                        );
+                      },
+                    ),
+                  );
+                },
+                onLongPress: () => onStartSelection(photo),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+    if (!scrollable) {
+      return grid;
+    }
+    return SingleChildScrollView(child: grid);
+  }
+}
+
+class _AlbumPhotoDateSection {
+  const _AlbumPhotoDateSection({
+    required this.key,
+    required this.date,
+    required this.label,
+    required this.photos,
+  });
+
+  final String key;
+  final DateTime date;
+  final String label;
+  final List<PhotoData> photos;
+}
+
+class _AlbumDateSectionHeader extends StatelessWidget {
+  const _AlbumDateSectionHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final PrototypeThemeTokens? tokens =
+        theme.extension<PrototypeThemeTokens>();
+    final Color lineColor =
+        (tokens?.border ?? theme.colorScheme.outline).withValues(alpha: 0.55);
+    final Color textColor =
+        (tokens?.muted ?? theme.colorScheme.onSurface).withValues(alpha: 0.86);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Container(
+            height: 1,
+            color: lineColor,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: textColor,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: lineColor,
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -6381,6 +8121,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
   bool _isEditingTitle = false;
   bool _isEditingNote = false;
   bool _textPanelCollapsed = false;
+  bool _tagsExpanded = false;
 
   PhotoData get photo => _photos[_index];
 
@@ -6408,6 +8149,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     final PhotoData updatedPhoto = photo.copyWith(
       title: result.title,
       note: result.note,
+      tags: photo.tags,
     );
     setState(() {
       _photos[_index] = updatedPhoto;
@@ -6531,21 +8273,29 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
             },
             icon: const Icon(Icons.fullscreen_rounded),
           ),
-          PopupMenuButton<String>(
-            tooltip: '更多操作',
-            onSelected: (String value) {
-              if (value == 'edit') {
-                _openPhotoEditorPage();
-              }
-            },
-            itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(
-                value: 'edit',
-                child: Text('编辑'),
-              ),
-            ],
-            icon: const Icon(Icons.more_vert_rounded),
-          ),
+          if (isDesktop)
+            TextButton.icon(
+              onPressed: _openPhotoEditorPage,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('编辑'),
+            )
+          else
+            PopupMenuButton<String>(
+              tooltip: '更多操作',
+              onSelected: (String value) {
+                if (value == 'edit') {
+                  _openPhotoEditorPage();
+                }
+              },
+              itemBuilder: (BuildContext context) =>
+                  const <PopupMenuEntry<String>>[
+                    PopupMenuItem<String>(
+                      value: 'edit',
+                      child: Text('编辑'),
+                    ),
+                  ],
+              icon: const Icon(Icons.more_vert_rounded),
+            ),
         ],
       ),
       body: SafeArea(
@@ -6644,6 +8394,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       dateController: _dateController,
       notePanelScrollController: _notePanelScrollController,
       noteFontSize: _noteFontSize,
+      tags: photo.tags,
+      tagsExpanded: _tagsExpanded,
       onEditTitle: _beginTitleEditing,
       onEditNote: () {
         setState(() {
@@ -6685,6 +8437,13 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       },
       onSaveTitle: _savePhotoTitle,
       onSaveNote: _savePhotoNote,
+      onToggleTagsExpanded: () {
+        setState(() {
+          _tagsExpanded = !_tagsExpanded;
+        });
+      },
+      onAddTag: _showAddTagDialog,
+      onRemoveTag: _confirmRemoveTag,
       showNoteOnly: false,
     );
     return Column(
@@ -6718,6 +8477,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       dateController: _dateController,
       notePanelScrollController: _notePanelScrollController,
       noteFontSize: _noteFontSize,
+      tags: photo.tags,
+      tagsExpanded: _tagsExpanded,
       onEditTitle: () {},
       onEditNote: () {},
       onCancelTitle: () {},
@@ -6739,6 +8500,9 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       },
       onSaveTitle: () {},
       onSaveNote: _savePhotoNote,
+      onToggleTagsExpanded: () {},
+      onAddTag: () {},
+      onRemoveTag: (_) {},
       showNoteOnly: true,
     );
   }
@@ -6815,6 +8579,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     final PhotoData updatedPhoto = photo.copyWith(
       note: nextNote,
       date: isAndroid ? _resolvedPhotoDateText(photo) : formatAlbumDate(parsedDate!),
+      tags: photo.tags,
     );
     setState(() {
       _photos[_index] = updatedPhoto;
@@ -6825,6 +8590,180 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     final AlbumData updatedAlbum = widget.album.copyWith(
       photos: List<PhotoData>.from(_photos),
     );
+    widget.onAlbumChanged(updatedAlbum);
+  }
+
+  Future<void> _showAddTagDialog() async {
+    final TextEditingController controller = TextEditingController();
+    final List<String> selectedTags = List<String>.from(photo.tags);
+    final List<String>? result = await showDialog<List<String>>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              title: const Text('编辑标签'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _presetPhotoTags.map((String tag) {
+                        final bool selected = selectedTags.any(
+                          (String item) => item.toLowerCase() == tag.toLowerCase(),
+                        );
+                        return FilterChip(
+                          label: Text(tag),
+                          selected: selected,
+                          onSelected: (bool value) {
+                            setDialogState(() {
+                              if (value) {
+                                selectedTags.add(tag);
+                              } else {
+                                selectedTags.removeWhere(
+                                  (String item) =>
+                                      item.toLowerCase() == tag.toLowerCase(),
+                                );
+                              }
+                              final List<String> clean =
+                                  sanitizePhotoTags(selectedTags);
+                              selectedTags
+                                ..clear()
+                                ..addAll(clean);
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: controller,
+                      decoration: InputDecoration(
+                        hintText: '输入自定义标签',
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            final String tag = normalizePhotoTag(controller.text);
+                            if (tag.isEmpty) {
+                              return;
+                            }
+                            setDialogState(() {
+                              selectedTags.add(tag);
+                              final List<String> clean =
+                                  sanitizePhotoTags(selectedTags);
+                              selectedTags
+                                ..clear()
+                                ..addAll(clean);
+                              controller.clear();
+                            });
+                          },
+                          icon: const Icon(Icons.add_rounded),
+                        ),
+                      ),
+                      onSubmitted: (_) {
+                        final String tag = normalizePhotoTag(controller.text);
+                        if (tag.isEmpty) {
+                          return;
+                        }
+                        setDialogState(() {
+                          selectedTags.add(tag);
+                          final List<String> clean =
+                              sanitizePhotoTags(selectedTags);
+                          selectedTags
+                            ..clear()
+                            ..addAll(clean);
+                          controller.clear();
+                        });
+                      },
+                    ),
+                    if (selectedTags.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: selectedTags.map((String tag) {
+                          return InputChip(
+                            label: Text(tag),
+                            onDeleted: () {
+                              setDialogState(() {
+                                selectedTags.removeWhere(
+                                  (String item) =>
+                                      item.toLowerCase() == tag.toLowerCase(),
+                                );
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(sanitizePhotoTags(selectedTags));
+                  },
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    if (!mounted || result == null) {
+      return;
+    }
+    _updateCurrentPhotoTags(result);
+  }
+
+  Future<void> _confirmRemoveTag(String tag) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('删除标签'),
+          content: Text('确定删除标签“$tag”吗？'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('删除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+    _updateCurrentPhotoTags(
+      photo.tags.where((String item) => item.toLowerCase() != tag.toLowerCase()),
+    );
+  }
+
+  void _updateCurrentPhotoTags(Iterable<String> tags) {
+    final List<String> nextTags = sanitizePhotoTags(tags);
+    final PhotoData updatedPhoto = photo.copyWith(tags: nextTags);
+    final List<PhotoData> updatedPhotos = List<PhotoData>.from(_photos);
+    updatedPhotos[_index] = updatedPhoto;
+    setState(() {
+      _photos = updatedPhotos;
+      _tagsExpanded = nextTags.length > 4;
+    });
+    final AlbumData updatedAlbum = widget.album.copyWith(photos: updatedPhotos);
     widget.onAlbumChanged(updatedAlbum);
   }
 
@@ -6848,6 +8787,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       imagePath: storedPath,
       orientation: orientation,
       date: formatAlbumDate(detectedDate),
+      tags: photo.tags,
     );
     final List<PhotoData> updatedPhotos = List<PhotoData>.from(_photos);
     updatedPhotos[_index] = updatedPhoto;
@@ -6995,6 +8935,8 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
   static const double _maxFullscreenZoom = 5.0;
   late List<PhotoData> _photos;
   late int _index;
+  late PageController _pageController;
+  late FocusNode _pageFocusNode;
   late double _turns;
   late double _zoom;
   late Offset _panOffset;
@@ -7010,114 +8952,194 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
     _index = _photos.length == 1
         ? 0
         : widget.initialIndex.clamp(0, _photos.length - 1);
+    _pageController = PageController(initialPage: _index);
+    _pageFocusNode = FocusNode();
     _turns = widget.initialTurns;
-    _zoom = widget.initialZoom;
-    _panOffset = widget.initialPanOffset;
+    _zoom = 1;
+    _panOffset = Offset.zero;
+  }
+
+  @override
+  void dispose() {
+    _pageFocusNode.dispose();
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final bool isDesktop = MediaQuery.of(context).size.width >= 900;
+    final bool allowPageSwipe =
+        !isDesktop && _photos.length > 1 && _zoom <= 1.02;
     return Scaffold(
       backgroundColor: const Color(0xFF141414),
       body: SafeArea(
-        child: Stack(
-          children: <Widget>[
-            Positioned.fill(
-              child: _DetailImageFrame(
-                photo: _photo,
-                zoom: _zoom,
-                turns: _turns,
-                panOffset: _panOffset,
-                onPanUpdate: (Offset nextOffset) {
-                  setState(() {
-                    _panOffset = nextOffset;
-                  });
-                },
-                onZoomChanged: _applyFullscreenZoom,
-                desktop: isDesktop,
-                maxZoom: _maxFullscreenZoom,
-                mobilePinchSensitivity: 0.04,
-                lockPinchToViewportCenter: true,
-                backgroundColor: const Color(0xFF141414),
-                baseFit: BoxFit.cover,
-                onSwipePrevious: !isDesktop && _canGoPrevious ? _goPrevious : null,
-                onSwipeNext: !isDesktop && _canGoNext ? _goNext : null,
+        child: Focus(
+          autofocus: true,
+          focusNode: _pageFocusNode,
+          onKeyEvent: _handleFullscreenKeyEvent,
+          child: Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: PageView.builder(
+                  controller: _pageController,
+                  physics: allowPageSwipe
+                      ? const PageScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  onPageChanged: _handleFullscreenPageChanged,
+                  itemCount: _photos.length,
+                  itemBuilder: (BuildContext context, int pageIndex) {
+                    final bool isCurrentPage = pageIndex == _index;
+                    final PhotoData pagePhoto = _photos[pageIndex];
+                    return _DetailImageFrame(
+                      photo: pagePhoto,
+                      zoom: isCurrentPage ? _zoom : 1,
+                      turns: isCurrentPage ? _turns : 0,
+                      panOffset: isCurrentPage ? _panOffset : Offset.zero,
+                      onPanUpdate: isCurrentPage
+                          ? (Offset nextOffset) {
+                              setState(() {
+                                _panOffset = nextOffset;
+                              });
+                            }
+                          : (_) {},
+                      onZoomChanged: isCurrentPage ? _applyFullscreenZoom : null,
+                      desktop: isDesktop,
+                      maxZoom: _maxFullscreenZoom,
+                      mobilePinchSensitivity: 0.04,
+                      lockPinchToViewportCenter: true,
+                      backgroundColor: const Color(0xFF141414),
+                      onSwipePrevious: null,
+                      onSwipeNext: null,
+                      baseFit: BoxFit.contain,
+                    );
+                  },
+                ),
               ),
-            ),
-            Positioned(
-              top: 6,
-              left: 8,
-              right: 8,
-              child: Row(
-                children: <Widget>[
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    color: Colors.white,
-                    icon: const Icon(Icons.close_rounded),
+              if (isDesktop && _photos.length > 1)
+                Positioned(
+                  left: 18,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: IconButton(
+                      onPressed: _canGoPrevious ? _goPrevious : null,
+                      color: Colors.white,
+                      iconSize: 28,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black.withValues(alpha: 0.28),
+                      ),
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
                   ),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        _photo.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
+                ),
+              if (isDesktop && _photos.length > 1)
+                Positioned(
+                  right: 18,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: IconButton(
+                      onPressed: _canGoNext ? _goNext : null,
+                      color: Colors.white,
+                      iconSize: 28,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black.withValues(alpha: 0.28),
+                      ),
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ),
+                ),
+              Positioned(
+                top: 6,
+                left: 8,
+                right: 8,
+                child: Row(
+                  children: <Widget>[
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      color: Colors.white,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          _photo.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 48),
-                ],
+                    const SizedBox(width: 48),
+                  ],
+                ),
               ),
-            ),
-            Positioned(
-              left: 18,
-              right: 18,
-              bottom: 22,
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _DarkActionButton(
-                      icon: Icons.remove_rounded,
-                      label: '缩小',
-                      onTap: () {
-                        _applyFullscreenZoom(
-                          (_zoom - 0.2).clamp(0.8, _maxFullscreenZoom),
-                        );
-                      },
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: 22,
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: _DarkActionButton(
+                        icon: Icons.center_focus_strong_rounded,
+                        label: '复原',
+                        onTap: _resetFullscreenView,
+                        width: double.infinity,
+                        height: 112,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _DarkActionButton(
-                      icon: Icons.add_rounded,
-                      label: '放大',
-                      onTap: () {
-                        _applyFullscreenZoom(
-                          (_zoom + 0.2).clamp(0.8, _maxFullscreenZoom),
-                        );
-                      },
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DarkActionButton(
+                        icon: Icons.remove_rounded,
+                        label: '缩小',
+                        onTap: () {
+                          _applyFullscreenZoom(
+                            (_zoom - 0.2).clamp(0.8, _maxFullscreenZoom),
+                          );
+                        },
+                        width: double.infinity,
+                        height: 112,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _DarkActionButton(
-                      icon: Icons.rotate_right_rounded,
-                      label: '旋转',
-                      onTap: () {
-                        setState(() {
-                          _turns += 0.25;
-                        });
-                      },
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DarkActionButton(
+                        icon: Icons.add_rounded,
+                        label: '放大',
+                        onTap: () {
+                          _applyFullscreenZoom(
+                            (_zoom + 0.2).clamp(0.8, _maxFullscreenZoom),
+                          );
+                        },
+                        width: double.infinity,
+                        height: 112,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _DarkActionButton(
+                        icon: Icons.rotate_right_rounded,
+                        label: '旋转',
+                        onTap: () {
+                          setState(() {
+                            _turns += 0.25;
+                          });
+                        },
+                        width: double.infinity,
+                        height: 112,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -7132,6 +9154,37 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
     });
   }
 
+  void _resetFullscreenView() {
+    setState(() {
+      _zoom = 1;
+      _panOffset = Offset.zero;
+    });
+  }
+
+  void _handleFullscreenPageChanged(int nextIndex) {
+    setState(() {
+      _index = nextIndex;
+      _turns = 0;
+      _zoom = 1;
+      _panOffset = Offset.zero;
+    });
+  }
+
+  KeyEventResult _handleFullscreenKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _goPrevious();
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _goNext();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   bool get _canGoPrevious => _index > 0;
 
   bool get _canGoNext => _index < _photos.length - 1;
@@ -7140,25 +9193,22 @@ class _FullscreenPhotoPageState extends State<FullscreenPhotoPage> {
     if (!_canGoPrevious) {
       return;
     }
-    setState(() {
-      _index -= 1;
-      _turns = 0;
-      _zoom = 1;
-      _panOffset = Offset.zero;
-    });
+    _pageController.previousPage(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
   }
 
   void _goNext() {
     if (!_canGoNext) {
       return;
     }
-    setState(() {
-      _index += 1;
-      _turns = 0;
-      _zoom = 1;
-      _panOffset = Offset.zero;
-    });
+    _pageController.nextPage(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
   }
+
 }
 
 class _LandscapeDetailLayout extends StatelessWidget {
@@ -7497,6 +9547,12 @@ double _viewerPhotoAspectRatio(PhotoData photo, double turns) {
   return quarterTurns.isOdd ? 1 / baseAspect : baseAspect;
 }
 
+double _viewerPhotoAspectRatioFromPixels(Size size, double turns) {
+  final double baseAspect = size.width / size.height;
+  final int quarterTurns = ((turns * 4).round() % 4 + 4) % 4;
+  return quarterTurns.isOdd ? 1 / baseAspect : baseAspect;
+}
+
 Size _fittedPhotoSize({
   required Size viewportSize,
   required double photoAspectRatio,
@@ -7702,12 +9758,27 @@ class _DetailImageFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String? imagePath = photo.imagePath;
+    if (imagePath == null || imagePath.isEmpty) {
+      return _buildFrame(context, _viewerPhotoAspectRatio(photo, turns));
+    }
+    return FutureBuilder<Size?>(
+      future: resolvePhotoPixelSize(imagePath),
+      builder: (BuildContext context, AsyncSnapshot<Size?> snapshot) {
+        final double photoAspectRatio = snapshot.hasData && snapshot.data != null
+            ? _viewerPhotoAspectRatioFromPixels(snapshot.data!, turns)
+            : _viewerPhotoAspectRatio(photo, turns);
+        return _buildFrame(context, photoAspectRatio);
+      },
+    );
+  }
+
+  Widget _buildFrame(BuildContext context, double photoAspectRatio) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final PrototypeThemeTokens? tokens =
             Theme.of(context).extension<PrototypeThemeTokens>();
         final Size viewportSize = constraints.biggest;
-        final double photoAspectRatio = _viewerPhotoAspectRatio(photo, turns);
         final Size fittedSize = _fittedPhotoSize(
           viewportSize: viewportSize,
           photoAspectRatio: photoAspectRatio,
@@ -7852,6 +9923,8 @@ class _PhotoTextPanel extends StatelessWidget {
     required this.dateController,
     required this.notePanelScrollController,
     required this.noteFontSize,
+    required this.tags,
+    required this.tagsExpanded,
     required this.onEditTitle,
     required this.onEditNote,
     required this.onCancelTitle,
@@ -7861,6 +9934,9 @@ class _PhotoTextPanel extends StatelessWidget {
     required this.onDecreaseFont,
     required this.onSaveTitle,
     required this.onSaveNote,
+    required this.onToggleTagsExpanded,
+    required this.onAddTag,
+    required this.onRemoveTag,
     this.showNoteOnly = false,
   });
 
@@ -7874,6 +9950,8 @@ class _PhotoTextPanel extends StatelessWidget {
   final TextEditingController dateController;
   final ScrollController notePanelScrollController;
   final double noteFontSize;
+  final List<String> tags;
+  final bool tagsExpanded;
   final VoidCallback onEditTitle;
   final VoidCallback onEditNote;
   final VoidCallback onCancelTitle;
@@ -7883,6 +9961,9 @@ class _PhotoTextPanel extends StatelessWidget {
   final VoidCallback onDecreaseFont;
   final VoidCallback onSaveTitle;
   final VoidCallback onSaveNote;
+  final VoidCallback onToggleTagsExpanded;
+  final VoidCallback onAddTag;
+  final ValueChanged<String> onRemoveTag;
   final bool showNoteOnly;
 
   @override
@@ -7910,6 +9991,9 @@ class _PhotoTextPanel extends StatelessWidget {
     final double minNoteHeight = noteLineHeight * 10;
     final String resolvedPhotoDate =
         photo.date.trim().isNotEmpty ? photo.date : dateController.text.trim();
+    final List<String> visibleTags = tagsExpanded
+        ? tags
+        : tags.take(4).toList();
     final Widget titleEditor = TextField(
       controller: titleController,
       decoration: InputDecoration(
@@ -8188,15 +10272,13 @@ class _PhotoTextPanel extends StatelessWidget {
               children: <Widget>[
                 if (!isAndroid)
                   Expanded(
-                    child: isEditingNote
-                        ? Column(
-                            children: <Widget>[
-                              Expanded(child: noteEditor),
-                              const SizedBox(height: 10),
-                              actionButtons,
-                            ],
-                          )
-                        : SingleChildScrollView(
+                    child: LayoutBuilder(
+                      builder: (BuildContext context, BoxConstraints constraints) {
+                        final Widget noteDisplay = SingleChildScrollView(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minWidth: constraints.maxWidth,
+                            ),
                             child: MarkdownBody(
                               data: photo.note,
                               selectable: false,
@@ -8257,6 +10339,19 @@ class _PhotoTextPanel extends StatelessWidget {
                               ),
                             ),
                           ),
+                        );
+                        return isEditingNote
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: <Widget>[
+                                  Expanded(child: noteEditor),
+                                  const SizedBox(height: 10),
+                                  actionButtons,
+                                ],
+                              )
+                            : noteDisplay;
+                      },
+                    ),
                   )
                 else
                   ConstrainedBox(
@@ -8368,6 +10463,75 @@ class _PhotoTextPanel extends StatelessWidget {
         const _SectionMarker(number: 10),
       ],
     );
+    final Widget tagSection = Stack(
+      children: <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: tokens.surface.withValues(alpha: isDark ? 0.56 : 0.42),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: tokens.border.withValues(alpha: 0.72)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    TextButton(
+                      onPressed: onToggleTagsExpanded,
+                      style: TextButton.styleFrom(
+                        minimumSize: Size.zero,
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        '标签',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: mutedText,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      tagsExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: mutedText,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    for (final String tag in visibleTags)
+                      _PhotoTagChip(
+                        label: tag,
+                        onLongPress: () => onRemoveTag(tag),
+                      ),
+                    if (!tagsExpanded && tags.length > visibleTags.length)
+                      _PhotoTagChip(
+                        label: '+${tags.length - visibleTags.length}',
+                        subtleTint: const Color(0xFFF3E8DA),
+                        onTap: onToggleTagsExpanded,
+                      ),
+                    _PhotoTagChip(
+                      label: '+',
+                      subtleTint: const Color(0xFFEAF3FF),
+                      onTap: onAddTag,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
     if (showNoteOnly) {
       return noteSection;
     }
@@ -8375,6 +10539,8 @@ class _PhotoTextPanel extends StatelessWidget {
         ? <Widget>[
             titleSection,
             const SizedBox(height: 2),
+            tagSection,
+            const SizedBox(height: 8),
             noteSection,
           ]
         : <Widget>[
@@ -8382,6 +10548,8 @@ class _PhotoTextPanel extends StatelessWidget {
             isAndroid
                 ? const SizedBox(height: 2)
                 : const SizedBox.shrink(),
+            tagSection,
+            const SizedBox(height: 10),
             isAndroid ? noteSection : Expanded(child: noteSection),
           ];
 
@@ -8477,6 +10645,10 @@ class _PhotoEditPageState extends State<_PhotoEditPage> {
       appBar: AppBar(
         title: const Text('编辑'),
         actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
           TextButton(
             onPressed: _save,
             child: const Text('保存'),
@@ -8676,43 +10848,53 @@ class _ToolButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool isDesktop = theme.platform != TargetPlatform.android;
     final ColorScheme colorScheme = theme.colorScheme;
     final PrototypeThemeTokens? tokens =
         theme.extension<PrototypeThemeTokens>();
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color fillColor = isDark
+    final Color fillColor = isDesktop
+        ? const Color(0x9C747474)
+        : isDark
         ? Color.alphaBlend(
             colorScheme.primary.withValues(alpha: 0.08),
             tokens?.surface ?? colorScheme.surface,
           )
         : const Color(0xFFF7EFE4);
-    final Color borderColor = isDark
+    final Color borderColor = isDesktop
+        ? const Color(0xBFF2F2F2)
+        : isDark
         ? (tokens?.border ?? colorScheme.outline).withValues(alpha: 0.82)
         : const Color(0xFFE2C9B1);
-    final Color iconColor = isDark
+    final Color iconColor = isDesktop
+        ? Colors.white
+        : isDark
         ? (tokens?.muted ?? colorScheme.onSurface).withValues(alpha: 0.94)
         : const Color(0xFF6E4E35);
-    final Color disabledIconColor = isDark
+    final Color disabledIconColor = isDesktop
+        ? Colors.white.withValues(alpha: 0.45)
+        : isDark
         ? (tokens?.muted ?? colorScheme.onSurface).withValues(alpha: 0.42)
         : const Color(0xFFBEAA96);
     final Widget button = DecoratedBox(
       decoration: BoxDecoration(
         color: fillColor,
-        borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(isDesktop ? 11 : 5),
+        border: Border.all(color: borderColor, width: isDesktop ? 1.2 : 1),
       ),
       child: TextButton(
         onPressed: enabled ? onTap : null,
         style: TextButton.styleFrom(
-          minimumSize: const Size(52, 52),
-          padding: const EdgeInsets.all(10),
+          minimumSize: Size(isDesktop ? 40 : 52, isDesktop ? 40 : 52),
+          padding: EdgeInsets.all(isDesktop ? 7 : 10),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(5),
+            borderRadius: BorderRadius.circular(isDesktop ? 11 : 5),
           ),
         ),
         child: Icon(
           icon,
           color: enabled ? iconColor : disabledIconColor,
+          size: isDesktop ? 18 : 24,
         ),
       ),
     );
@@ -8728,47 +10910,67 @@ class _DarkActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.width,
+    this.height,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final double? width;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool isDesktop = theme.platform != TargetPlatform.android;
     final ColorScheme colorScheme = theme.colorScheme;
     final PrototypeThemeTokens? tokens =
         theme.extension<PrototypeThemeTokens>();
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color fillColor = isDark
+    final Color fillColor = isDesktop
+        ? const Color(0xB0606060)
+        : isDark
         ? Color.alphaBlend(
             colorScheme.primary.withValues(alpha: 0.10),
             tokens?.surface ?? const Color(0xFF262626),
           )
         : const Color(0xFF262626);
-    final Color borderColor = isDark
+    final Color borderColor = isDesktop
+        ? const Color(0xD8F4F4F4)
+        : isDark
         ? (tokens?.border ?? colorScheme.outline).withValues(alpha: 0.72)
         : const Color(0xFFFFF4E8).withValues(alpha: 0.72);
-    final Color iconColor = isDark
+    final Color iconColor = isDesktop
+        ? Colors.white
+        : isDark
         ? (tokens?.muted ?? colorScheme.onSurface).withValues(alpha: 0.96)
         : Colors.white;
     final Widget button = InkWell(
-      borderRadius: BorderRadius.circular(5),
+      borderRadius: BorderRadius.circular(isDesktop ? 14 : 5),
       onTap: onTap,
       child: Ink(
-        width: 52,
-        height: 48,
+        width: width ?? (isDesktop ? 56 : 52),
+        height: height ?? (isDesktop ? 56 : 48),
         decoration: BoxDecoration(
           color: fillColor,
           border: Border.all(
             color: borderColor,
-            width: 1.4,
+            width: isDesktop ? 1.35 : 1.4,
           ),
-          borderRadius: BorderRadius.circular(5),
+          borderRadius: BorderRadius.circular(isDesktop ? 14 : 5),
+          boxShadow: isDesktop
+              ? const <BoxShadow>[
+                  BoxShadow(
+                    color: Color(0x33000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: Center(
-          child: Icon(icon, color: iconColor, size: 18),
+          child: Icon(icon, color: iconColor, size: isDesktop ? 22 : 18),
         ),
       ),
     );
@@ -8901,6 +11103,53 @@ class _PhotoTile extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThumbnailPhotoTile extends StatelessWidget {
+  const _ThumbnailPhotoTile({
+    required this.photo,
+    required this.onTap,
+    required this.onLongPress,
+    required this.selectionMode,
+    required this.selected,
+  });
+
+  final PhotoData photo;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final bool selectionMode;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            PhotoVisual(photo: photo, fit: BoxFit.cover),
+            if (selectionMode)
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: selected
+                        ? const Color(0xFFFF3B30)
+                        : Colors.black.withValues(alpha: 0.12),
+                    width: selected ? 2 : 1,
+                  ),
+                  color: selected
+                      ? const Color(0x22FF3B30)
+                      : Colors.black.withValues(alpha: 0.02),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -9073,6 +11322,161 @@ class _AlbumTextEditorPane extends StatelessWidget {
     );
   }
 
+}
+
+class _PhotoTagChip extends StatelessWidget {
+  const _PhotoTagChip({
+    required this.label,
+    this.onTap,
+    this.onLongPress,
+    this.subtleTint,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final Color? subtleTint;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final _TagChipPalette palette = _tagChipPaletteFor(
+      label,
+      theme,
+      subtleTint: subtleTint,
+    );
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: palette.background,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: palette.border),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: palette.foreground,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AlbumFilterChip extends StatelessWidget {
+  const _AlbumFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final _TagChipPalette palette = _tagChipPaletteFor(label, theme);
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? palette.background.withValues(alpha: 0.96)
+              : palette.background.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? palette.border.withValues(alpha: 0.95)
+                : palette.border.withValues(alpha: 0.78),
+          ),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: palette.foreground,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TagChipPalette {
+  const _TagChipPalette({
+    required this.background,
+    required this.border,
+    required this.foreground,
+  });
+
+  final Color background;
+  final Color border;
+  final Color foreground;
+}
+
+_TagChipPalette _tagChipPaletteFor(
+  String label,
+  ThemeData theme, {
+  Color? subtleTint,
+}) {
+  if (subtleTint != null) {
+    return _TagChipPalette(
+      background: subtleTint,
+      border: subtleTint.withValues(alpha: 0.88),
+      foreground: const Color(0xFF5C4635),
+    );
+  }
+  const List<_TagChipPalette> lightPalettes = <_TagChipPalette>[
+    _TagChipPalette(
+      background: Color(0xFFFFE8D8),
+      border: Color(0xFFF0B58B),
+      foreground: Color(0xFF87552E),
+    ),
+    _TagChipPalette(
+      background: Color(0xFFFFE2E2),
+      border: Color(0xFFEDB0B6),
+      foreground: Color(0xFF8D4953),
+    ),
+    _TagChipPalette(
+      background: Color(0xFFE4F0FF),
+      border: Color(0xFFAAC7ED),
+      foreground: Color(0xFF476788),
+    ),
+    _TagChipPalette(
+      background: Color(0xFFE9F6E6),
+      border: Color(0xFFB7D6AE),
+      foreground: Color(0xFF56724A),
+    ),
+    _TagChipPalette(
+      background: Color(0xFFF3E7FF),
+      border: Color(0xFFD0B8ED),
+      foreground: Color(0xFF6E548D),
+    ),
+  ];
+  final bool isDark = theme.brightness == Brightness.dark;
+  final _TagChipPalette base =
+      lightPalettes[label.hashCode.abs() % lightPalettes.length];
+  if (!isDark) {
+    return base;
+  }
+  return _TagChipPalette(
+    background: Color.alphaBlend(
+      base.background.withValues(alpha: 0.18),
+      theme.colorScheme.surface,
+    ),
+    border: base.border.withValues(alpha: 0.74),
+    foreground: Colors.white.withValues(alpha: 0.92),
+  );
 }
 
 class _TextPanelToggleButton extends StatelessWidget {
@@ -11443,6 +13847,7 @@ class PhotoData {
     required this.title,
     required this.date,
     required this.note,
+    this.tags = const <String>[],
     required this.orientation,
     required this.style,
     this.imagePath,
@@ -11453,6 +13858,7 @@ class PhotoData {
   final String title;
   final String date;
   final String note;
+  final List<String> tags;
   final PhotoOrientation orientation;
   final PhotoStyle style;
   final String? imagePath;
@@ -11463,6 +13869,7 @@ class PhotoData {
     String? title,
     String? date,
     String? note,
+    List<String>? tags,
     PhotoOrientation? orientation,
     PhotoStyle? style,
     String? imagePath,
@@ -11473,6 +13880,7 @@ class PhotoData {
       title: title ?? this.title,
       date: date ?? this.date,
       note: note ?? this.note,
+      tags: tags ?? this.tags,
       orientation: orientation ?? this.orientation,
       style: style ?? this.style,
       imagePath: imagePath ?? this.imagePath,
@@ -11486,6 +13894,7 @@ class PhotoData {
       'title': title,
       'date': date,
       'note': note,
+      'tags': tags,
       'orientation': orientation.name,
       'style': style.name,
       'imagePath': imagePath,
@@ -11499,6 +13908,10 @@ class PhotoData {
       title: json['title'] as String,
       date: json['date'] as String,
       note: json['note'] as String,
+      tags: sanitizePhotoTags(
+        (json['tags'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic item) => item as String),
+      ),
       orientation: PhotoOrientation.values.byName(
         json['orientation'] as String,
       ),
