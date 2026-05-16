@@ -1,5 +1,56 @@
 # Task Log
 
+## 2026-05-16
+
+### What Was Completed
+- Implemented task 6, the real thumbnail cache system, so the app now stores originals and thumbnails separately and can use thumbnails for list-heavy surfaces.
+- Added managed photo storage paths for `originalPath` and `thumbnailPath`, while keeping backward-compatible loading for older data that only had the legacy `imagePath`.
+- Changed import flows to generate both files on write:
+  - copy the original into the app-local originals directory
+  - generate a thumbnail into the thumbnails directory
+- Added startup-time thumbnail repair for existing local albums and recycle-bin items so missing thumbnails are regenerated automatically.
+- Switched list-oriented image surfaces to prefer thumbnails by default while photo detail and fullscreen explicitly continue to load original files.
+- Updated delete/copy/backup-import flows so original and thumbnail files stay in sync.
+- Implemented Android native album-group importing with `photo_manager`, using a two-step flow:
+  - choose a system album / folder
+  - choose images inside that album
+- Reworked the Android import picker to a 5-column grid with:
+  - full-screen preview
+  - preview paging
+  - select-all
+  - drag-across selection
+  - interval selection by long-pressing a start item and dragging to a later item
+- Mirrored that interval-selection behavior into album-detail thumbnail mode on Android.
+- Changed the Android import action into an extended floating button that can show progress text instead of only a spinner.
+
+### Files Changed
+- `lib/main.dart`
+- `WORKLOG.md`
+- `README.md`
+- `docs/current_status.md`
+- `docs/task_log.md`
+
+### How To Verify
+- Run `flutter analyze --no-pub`
+- Run `flutter build windows`
+- Run `flutter build apk`
+- Import a batch of large images and confirm the list/grid views feel smoother than before because they are no longer decoding originals everywhere.
+- Open photo detail and fullscreen and confirm the viewed image still uses the original file, not the cached thumbnail.
+- On Android, open image import and confirm:
+  - the first page shows system albums
+  - the second page shows a 5-column photo grid
+  - tapping a photo opens preview
+  - long-press and drag selects a contiguous range
+  - the button text changes between `正在导入 x/y` and `正在生成缩略图 x/y`
+
+### Current Problem
+- The Android import picker has been rebuilt and packaged, but it still needs another real-device pass with a very large photo library to confirm memory behavior and perceived responsiveness.
+- The local untracked file `相册界面2.png` still has not been added to version control.
+- The generated `feature_check_report.html` is still local-only and not committed.
+
+### Next Suggestion
+- Validate the Android import picker on a real device with a larger gallery, then decide whether the progress text is sufficient or whether it should become a fuller modal/progress panel.
+
 ## 2026-05-10
 
 ### What Was Completed

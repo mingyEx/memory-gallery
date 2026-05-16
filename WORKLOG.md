@@ -93,6 +93,15 @@
 - 照片详情页全屏模式已改成 `cover` 基准的沉浸查看：进入全屏时默认尽量铺满屏幕，保持原比例，允许超出边界后被裁切
 - 照片详情页普通移动端模式中的 `7` 号图片区已从固定高度改成宽度优先，图片按可用宽度自然展开，长图和竖图会把图片区自然撑高
 - 调试用红色边框与各子窗口右上角数字标号已再次默认关闭，当前安装包不再显示这些调试元素
+- 已完成真正的缩略图缓存系统：原图与缩略图分离保存到 `app_data/photos/original` 与 `app_data/photos/thumbnails`，列表页默认走缩略图，详情页与全屏页走原图
+- 旧相册数据会在启动时自动补齐缺失缩略图，删除照片时会同步删除原图和缩略图
+- Android 端已完成“系统相册分组导入”：先选系统相册，再选该相册中的图片，多选后导入到当前相册
+- Android 导入页已支持 5 列网格、点击图片进大图预览、预览内左右滑动切图、右上角选中/取消选中，并把选中状态回传到网格页
+- Android 导入页已支持“全选 / 取消全选”和手指滑过连续选中
+- Android 导入页与相册详情页缩略图模式都已加入“小米相册式”长按起点后拖动整段区间选中逻辑
+- Android 相册详情页缩略图模式已继续保留普通点按进入照片详情，不会因为多选逻辑破坏浏览路径
+- Android 导入按钮已改成带文字的扩展浮动按钮，导入时会显示阶段化进度文案：`正在导入 x/y`、`正在生成缩略图 x/y`
+- 最新 Android APK 与 Windows 安装器已重新生成并同步到 `build/installers`
 
 ## 已验证
 - `flutter analyze` 通过
@@ -133,6 +142,13 @@
 - 本轮 Android 最新安装包已再次通过 `flutter build apk` 并同步覆盖到 `build/installers/album_app_android_release.apk`
 - 本轮普通照片详情页 `7` 号宽度优先改动、全屏 `cover` 改动和调试标记关闭已通过 `flutter analyze --no-pub`
 - 本轮 Android 最新安装包已再次通过 `flutter build apk` 并同步覆盖到 `build/installers/album_app_android_release.apk`
+- 本轮缩略图缓存系统已通过 `flutter analyze --no-pub`
+- 本轮缩略图缓存系统已通过 `flutter build windows`
+- 本轮缩略图缓存系统已通过 `flutter build apk`
+- 本轮 Android 原生相册分组导入、导入预览与长按区间选择改动已通过 `flutter analyze --no-pub`
+- 本轮 Android 原生相册分组导入、导入预览与长按区间选择改动已通过 `flutter build apk`
+- 最新 Android 安装包已再次同步覆盖到 `build/installers/album_app_android_release.apk`
+- 最新 Windows 安装器已再次生成到 `build/installers/album_app_windows_setup.exe`
 
 ## 暂不继续
 - 批量移动照片到其他相册
@@ -144,6 +160,8 @@
 - 在实体 Android 机上重点验证照片详情页正文聚焦编辑、10 行文本框、滚动条和全屏双指缩放手感
 - 在实体 Android 机上重点验证照片详情页普通模式的 `7` 号图片区是否真正按宽度优先自然撑高，以及全屏 `cover` 逻辑是否符合系统相册的默认沉浸效果
 - 在实体 Android 机上重点验证照片详情页 `8/9/10` 压缩布局、相册详情页 `5/6` 叠压效果以及“关于软件”只读弹窗
+- 在实体 Android 机上重点验证导入页大批量选图后的稳定性，确认分页缩略图、预览返回和区间多选在真机上都不卡顿
+- 在实体 Android 机上确认“正在导入 / 正在生成缩略图”阶段文案是否足够清晰，必要时再考虑补更明显的进度面板
 - 再次确认相册详情页和照片详情页的布局边界
 - 继续观察 Android 端是否仍有闪退，如果复现则抓精确操作路径与日志
 - 紧凑模式视觉再打磨

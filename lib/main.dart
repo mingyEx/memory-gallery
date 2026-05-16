@@ -32,6 +32,22 @@ typedef DataActionCallback = Future<void> Function();
 typedef ContextDataActionCallback = Future<void> Function(BuildContext context);
 typedef TrashRestoreCallback = String Function(TrashPhotoEntry entry);
 typedef AlbumsChangedCallback = void Function(List<AlbumData> albums);
+typedef PhotoPersistStageCallback = void Function(PhotoPersistStage stage);
+
+enum PhotoPersistStage {
+  importing,
+  generatingThumbnail,
+}
+
+class ManagedPhotoPaths {
+  const ManagedPhotoPaths({
+    required this.originalPath,
+    required this.thumbnailPath,
+  });
+
+  final String originalPath;
+  final String thumbnailPath;
+}
 
 const List<String> _bundledSampleImageAssets = <String>[
   'pic/wallhaven-ey26qk.jpg',
@@ -57,10 +73,15 @@ class LocalAlbumStore {
   static const String _appearanceKey = 'appearance_json_v1';
   static const String _recycleBinKey = 'recycle_bin_json_v1';
   static const String _mediaFolderName = 'album_media';
+  static const String _appDataFolderName = 'app_data';
+  static const String _photosFolderName = 'photos';
+  static const String _originalFolderName = 'original';
+  static const String _thumbnailFolderName = 'thumbnails';
   static const String _backgroundFolderName = 'album_backgrounds';
   static const String _backupMetadataPath = 'backup.json';
   static const String _backupMediaFolder = 'media';
   static const String _backupBackgroundFolder = 'background';
+  static const int _thumbnailMaxDimension = 480;
 
   static Future<List<AlbumData>?> loadAlbums() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -139,7 +160,7 @@ class LocalAlbumStore {
           <Map<String, dynamic>>[];
       for (final PhotoData photo in album.photos) {
         final Map<String, dynamic> photoJson = photo.toJson();
-        final String? imagePath = photo.imagePath;
+        final String? imagePath = photo.resolvedOriginalPath;
         if (imagePath != null && imagePath.isNotEmpty) {
           final File file = File(imagePath);
           if (await file.exists()) {
@@ -148,8 +169,12 @@ class LocalAlbumStore {
                 '$_backupMediaFolder/${album.id}_${photo.id}${_fileExtension(imagePath)}';
             archive.add(ArchiveFile(relativePath, bytes.length, bytes));
             photoJson['imagePath'] = relativePath;
+            photoJson['originalPath'] = relativePath;
+            photoJson['thumbnailPath'] = null;
           } else {
             photoJson['imagePath'] = null;
+            photoJson['originalPath'] = null;
+            photoJson['thumbnailPath'] = null;
           }
         }
         exportedPhotos.add(photoJson);
@@ -227,19 +252,24 @@ class LocalAlbumStore {
           final Map<String, dynamic> photoJson = Map<String, dynamic>.from(
             photoItem as Map<String, dynamic>,
           );
-          final String? relativePath = photoJson['imagePath'] as String?;
+          final String? relativePath =
+              photoJson['originalPath'] as String? ??
+              photoJson['imagePath'] as String?;
           if (relativePath != null && relativePath.isNotEmpty) {
             final ArchiveFile mediaFile =
                 archive.findFile(relativePath) ??
                 (throw FormatException('备份包缺少图片：$relativePath'));
-            final String importedPath = await _restoreImportedMedia(
+            final ManagedPhotoPaths importedPaths = await _restoreImportedMedia(
               albumId: albumJson['id'] as String,
               photoId: photoJson['id'] as String,
               relativePath: relativePath,
               bytes: mediaFile.content as List<int>,
             );
-            createdFiles.add(importedPath);
-            photoJson['imagePath'] = importedPath;
+            createdFiles.add(importedPaths.originalPath);
+            createdFiles.add(importedPaths.thumbnailPath);
+            photoJson['imagePath'] = importedPaths.originalPath;
+            photoJson['originalPath'] = importedPaths.originalPath;
+            photoJson['thumbnailPath'] = importedPaths.thumbnailPath;
           }
           importedPhotos.add(photoJson);
         }
@@ -272,16 +302,43 @@ class LocalAlbumStore {
     }
   }
 
+  static Future<ManagedPhotoPaths> persistPickedPhoto(
+    XFile image, {
+    required String albumId,
+    PhotoPersistStageCallback? onStageChanged,
+  }) async {
+    final Uint8List bytes = await image.readAsBytes();
+    return persistPhotoBytes(
+      bytes,
+      albumId: albumId,
+      sourceName: image.path,
+      onStageChanged: onStageChanged,
+    );
+  }
+
   static Future<String> persistPickedImage(
     XFile image, {
     required String albumId,
   }) async {
-    final Directory mediaDir = await _mediaDirectory();
-    final String extension = _fileExtension(image.path);
-    final String targetPath =
-        '${mediaDir.path}${Platform.pathSeparator}${albumId}_${DateTime.now().microsecondsSinceEpoch}$extension';
-    await File(image.path).copy(targetPath);
-    return targetPath;
+    final ManagedPhotoPaths stored = await persistPickedPhoto(
+      image,
+      albumId: albumId,
+    );
+    return stored.originalPath;
+  }
+
+  static Future<ManagedPhotoPaths> persistBundledPhotoBytes(
+    Uint8List bytes, {
+    required String albumId,
+    required String sourceName,
+    PhotoPersistStageCallback? onStageChanged,
+  }) async {
+    return persistPhotoBytes(
+      bytes,
+      albumId: albumId,
+      sourceName: sourceName,
+      onStageChanged: onStageChanged,
+    );
   }
 
   static Future<String> persistBundledImageBytes(
@@ -289,10 +346,36 @@ class LocalAlbumStore {
     required String albumId,
     required String sourceName,
   }) async {
-    return persistImageBytes(
+    final ManagedPhotoPaths stored = await persistBundledPhotoBytes(
       bytes,
       albumId: albumId,
       sourceName: sourceName,
+    );
+    return stored.originalPath;
+  }
+
+  static Future<ManagedPhotoPaths> persistPhotoBytes(
+    Uint8List bytes, {
+    required String albumId,
+    required String sourceName,
+    PhotoPersistStageCallback? onStageChanged,
+  }) async {
+    final Directory originalDir = await _originalDirectory();
+    final Directory thumbnailDir = await _thumbnailDirectory();
+    final String baseName = _managedPhotoBaseName(albumId);
+    final String extension = _fileExtension(sourceName);
+    final String originalPath =
+        '${originalDir.path}${Platform.pathSeparator}$baseName$extension';
+    final String thumbnailPath =
+        '${thumbnailDir.path}${Platform.pathSeparator}${baseName}_thumb.png';
+    onStageChanged?.call(PhotoPersistStage.importing);
+    await File(originalPath).writeAsBytes(bytes, flush: true);
+    onStageChanged?.call(PhotoPersistStage.generatingThumbnail);
+    final Uint8List thumbnailBytes = await _buildThumbnailBytes(bytes);
+    await File(thumbnailPath).writeAsBytes(thumbnailBytes, flush: true);
+    return ManagedPhotoPaths(
+      originalPath: originalPath,
+      thumbnailPath: thumbnailPath,
     );
   }
 
@@ -301,12 +384,17 @@ class LocalAlbumStore {
     required String albumId,
     required String sourceName,
   }) async {
-    final Directory mediaDir = await _mediaDirectory();
-    final String extension = _fileExtension(sourceName);
-    final String targetPath =
-        '${mediaDir.path}${Platform.pathSeparator}${albumId}_${DateTime.now().microsecondsSinceEpoch}$extension';
-    await File(targetPath).writeAsBytes(bytes, flush: true);
-    return targetPath;
+    final ManagedPhotoPaths stored = await persistPhotoBytes(
+      bytes,
+      albumId: albumId,
+      sourceName: sourceName,
+    );
+    return stored.originalPath;
+  }
+
+  static Future<void> deleteManagedPhoto(PhotoData photo) async {
+    await deleteManagedImage(photo.resolvedOriginalPath);
+    await deleteManagedImage(photo.thumbnailPath);
   }
 
   static Future<void> deleteManagedImage(String? path) async {
@@ -314,7 +402,11 @@ class LocalAlbumStore {
       return;
     }
     final Directory mediaDir = await _mediaDirectory();
-    if (!path.startsWith(mediaDir.path)) {
+    final Directory originalDir = await _originalDirectory();
+    final Directory thumbnailDir = await _thumbnailDirectory();
+    if (!path.startsWith(mediaDir.path) &&
+        !path.startsWith(originalDir.path) &&
+        !path.startsWith(thumbnailDir.path)) {
       return;
     }
     final File file = File(path);
@@ -325,8 +417,28 @@ class LocalAlbumStore {
 
   static Future<void> deleteAlbumImages(AlbumData album) async {
     for (final PhotoData photo in album.photos) {
-      await deleteManagedImage(photo.imagePath);
+      await deleteManagedPhoto(photo);
     }
+  }
+
+  static Future<ManagedPhotoPaths?> duplicateManagedPhoto(
+    PhotoData photo, {
+    required String albumId,
+  }) async {
+    final String? sourcePath = photo.resolvedOriginalPath;
+    if (sourcePath == null || sourcePath.isEmpty) {
+      return null;
+    }
+    final File sourceFile = File(sourcePath);
+    if (!await sourceFile.exists()) {
+      return null;
+    }
+    final Uint8List bytes = await sourceFile.readAsBytes();
+    return persistPhotoBytes(
+      bytes,
+      albumId: albumId,
+      sourceName: sourcePath,
+    );
   }
 
   static Future<String?> duplicateManagedImage(
@@ -340,12 +452,13 @@ class LocalAlbumStore {
     if (!await sourceFile.exists()) {
       return null;
     }
-    final Directory mediaDir = await _mediaDirectory();
-    final String extension = _fileExtension(sourcePath);
-    final String targetPath =
-        '${mediaDir.path}${Platform.pathSeparator}${albumId}_${DateTime.now().microsecondsSinceEpoch}$extension';
-    await sourceFile.copy(targetPath);
-    return targetPath;
+    final Uint8List bytes = await sourceFile.readAsBytes();
+    final ManagedPhotoPaths stored = await persistPhotoBytes(
+      bytes,
+      albumId: albumId,
+      sourceName: sourcePath,
+    );
+    return stored.originalPath;
   }
 
   static Future<String> persistBackgroundImage(String sourcePath) async {
@@ -382,6 +495,39 @@ class LocalAlbumStore {
     return directory;
   }
 
+  static Future<Directory> _photosRootDirectory() async {
+    final Directory root = await getApplicationDocumentsDirectory();
+    final Directory directory = Directory(
+      '${root.path}${Platform.pathSeparator}$_appDataFolderName${Platform.pathSeparator}$_photosFolderName',
+    );
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    return directory;
+  }
+
+  static Future<Directory> _originalDirectory() async {
+    final Directory root = await _photosRootDirectory();
+    final Directory directory = Directory(
+      '${root.path}${Platform.pathSeparator}$_originalFolderName',
+    );
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    return directory;
+  }
+
+  static Future<Directory> _thumbnailDirectory() async {
+    final Directory root = await _photosRootDirectory();
+    final Directory directory = Directory(
+      '${root.path}${Platform.pathSeparator}$_thumbnailFolderName',
+    );
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+    return directory;
+  }
+
   static Future<Directory> _backgroundDirectory() async {
     final Directory root = await getApplicationDocumentsDirectory();
     final Directory directory = Directory(
@@ -401,18 +547,134 @@ class LocalAlbumStore {
     return path.substring(dotIndex);
   }
 
-  static Future<String> _restoreImportedMedia({
+  static String _managedPhotoBaseName(String albumId) {
+    return '${albumId}_${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  static Future<Uint8List> _buildThumbnailBytes(Uint8List sourceBytes) async {
+    final ui.Codec sourceCodec = await ui.instantiateImageCodec(sourceBytes);
+    final ui.FrameInfo sourceFrame = await sourceCodec.getNextFrame();
+    final int sourceWidth = sourceFrame.image.width;
+    final int sourceHeight = sourceFrame.image.height;
+    final int longestSide = math.max(sourceWidth, sourceHeight);
+    final double resizeRatio = longestSide <= _thumbnailMaxDimension
+        ? 1
+        : _thumbnailMaxDimension / longestSide;
+    final int targetWidth = math.max(
+      1,
+      (sourceWidth * resizeRatio).round(),
+    );
+    final int targetHeight = math.max(
+      1,
+      (sourceHeight * resizeRatio).round(),
+    );
+    final ui.Codec thumbCodec = await ui.instantiateImageCodec(
+      sourceBytes,
+      targetWidth: targetWidth,
+      targetHeight: targetHeight,
+    );
+    final ui.FrameInfo thumbFrame = await thumbCodec.getNextFrame();
+    final ByteData? byteData = await thumbFrame.image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    return byteData!.buffer.asUint8List();
+  }
+
+  static Future<PhotoData> ensureThumbnailForPhoto(PhotoData photo) async {
+    final String? originalPath = photo.resolvedOriginalPath;
+    if (originalPath == null || originalPath.isEmpty) {
+      return photo;
+    }
+    final File originalFile = File(originalPath);
+    if (!await originalFile.exists()) {
+      return photo;
+    }
+    String? thumbnailPath = photo.thumbnailPath;
+    if (thumbnailPath == null || thumbnailPath.isEmpty) {
+      final Directory thumbnailDir = await _thumbnailDirectory();
+      thumbnailPath =
+          '${thumbnailDir.path}${Platform.pathSeparator}${_fileStem(originalPath)}_thumb.png';
+    }
+    final File thumbFile = File(thumbnailPath);
+    if (!await thumbFile.exists()) {
+      final Uint8List bytes = await originalFile.readAsBytes();
+      final Uint8List thumbnailBytes = await _buildThumbnailBytes(bytes);
+      await thumbFile.writeAsBytes(thumbnailBytes, flush: true);
+    }
+    return photo.copyWith(
+      imagePath: originalPath,
+      originalPath: originalPath,
+      thumbnailPath: thumbnailPath,
+    );
+  }
+
+  static Future<List<AlbumData>> ensurePhotoCachesForAlbums(
+    List<AlbumData> albums,
+  ) async {
+    final List<AlbumData> updatedAlbums = <AlbumData>[];
+    for (final AlbumData album in albums) {
+      final List<PhotoData> updatedPhotos = <PhotoData>[];
+      for (final PhotoData photo in album.photos) {
+        updatedPhotos.add(await ensureThumbnailForPhoto(photo));
+      }
+      updatedAlbums.add(album.copyWith(photos: updatedPhotos));
+    }
+    return updatedAlbums;
+  }
+
+  static Future<List<TrashPhotoEntry>> ensurePhotoCachesForRecycleBin(
+    List<TrashPhotoEntry> entries,
+  ) async {
+    final List<TrashPhotoEntry> updatedEntries = <TrashPhotoEntry>[];
+    for (final TrashPhotoEntry entry in entries) {
+      updatedEntries.add(
+        TrashPhotoEntry(
+          id: entry.id,
+          albumId: entry.albumId,
+          albumTitle: entry.albumTitle,
+          photo: await ensureThumbnailForPhoto(entry.photo),
+          originalPhotoIndex: entry.originalPhotoIndex,
+          deletedAt: entry.deletedAt,
+        ),
+      );
+    }
+    return updatedEntries;
+  }
+
+  static String _fileStem(String path) {
+    final String normalized = path.replaceAll('\\', '/');
+    final String fileName = normalized.split('/').last;
+    final int dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex == -1) {
+      return fileName;
+    }
+    return fileName.substring(0, dotIndex);
+  }
+
+  static Future<ManagedPhotoPaths> _restoreImportedMedia({
     required String albumId,
     required String photoId,
     required String relativePath,
     required List<int> bytes,
   }) async {
-    final Directory mediaDir = await _mediaDirectory();
+    final Directory originalDir = await _originalDirectory();
+    final Directory thumbnailDir = await _thumbnailDirectory();
     final String extension = _fileExtension(relativePath);
-    final String targetPath =
-        '${mediaDir.path}${Platform.pathSeparator}${albumId}_${photoId}_${DateTime.now().microsecondsSinceEpoch}$extension';
-    await File(targetPath).writeAsBytes(bytes, flush: true);
-    return targetPath;
+    final String baseName =
+        '${albumId}_${photoId}_${DateTime.now().microsecondsSinceEpoch}';
+    final String originalPath =
+        '${originalDir.path}${Platform.pathSeparator}$baseName$extension';
+    final String thumbnailPath =
+        '${thumbnailDir.path}${Platform.pathSeparator}${baseName}_thumb.png';
+    await File(originalPath).writeAsBytes(bytes, flush: true);
+    final Uint8List thumbnailBytes = await _buildThumbnailBytes(
+      Uint8List.fromList(bytes),
+    );
+    await File(thumbnailPath).writeAsBytes(thumbnailBytes, flush: true);
+    return ManagedPhotoPaths(
+      originalPath: originalPath,
+      thumbnailPath: thumbnailPath,
+    );
   }
 
   static Future<String> _restoreImportedBackground({
@@ -1585,7 +1847,7 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
           .where((TrashPhotoEntry item) => item.id != entry.id)
           .toList();
     });
-    unawaited(LocalAlbumStore.deleteManagedImage(entry.photo.imagePath));
+    unawaited(LocalAlbumStore.deleteManagedPhoto(entry.photo));
     unawaited(LocalAlbumStore.saveRecycleBin(_recycleBin));
   }
 
@@ -1602,7 +1864,7 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
 
   Future<void> _deleteTrashImages(List<TrashPhotoEntry> entries) async {
     for (final TrashPhotoEntry entry in entries) {
-      await LocalAlbumStore.deleteManagedImage(entry.photo.imagePath);
+      await LocalAlbumStore.deleteManagedPhoto(entry.photo);
     }
   }
 
@@ -1846,11 +2108,19 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
   }
 
   Future<void> _loadLocalState() async {
-    final List<AlbumData>? albums = await LocalAlbumStore.loadAlbums();
+    final List<AlbumData>? loadedAlbums = await LocalAlbumStore.loadAlbums();
     final PrototypeAppearance? appearance =
         await LocalAlbumStore.loadAppearance();
-    final List<TrashPhotoEntry>? recycleBin =
+    final List<TrashPhotoEntry>? loadedRecycleBin =
         await LocalAlbumStore.loadRecycleBin();
+    final List<AlbumData>? albums = loadedAlbums == null
+        ? null
+        : await LocalAlbumStore.ensurePhotoCachesForAlbums(loadedAlbums);
+    final List<TrashPhotoEntry>? recycleBin = loadedRecycleBin == null
+        ? null
+        : await LocalAlbumStore.ensurePhotoCachesForRecycleBin(
+            loadedRecycleBin,
+          );
     if (!mounted) {
       return;
     }
@@ -1865,6 +2135,12 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         _recycleBin = recycleBin;
       }
     });
+    if (albums != null) {
+      await LocalAlbumStore.saveAlbums(albums);
+    }
+    if (recycleBin != null) {
+      await LocalAlbumStore.saveRecycleBin(recycleBin);
+    }
     await _ensureBundledSamplePhotos();
   }
 
@@ -1881,7 +2157,8 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
         (PhotoData photo) => photo.id == assetId,
       );
       if (existingIndex != -1) {
-        final String? existingPath = nextPhotos[existingIndex].imagePath;
+        final String? existingPath =
+            nextPhotos[existingIndex].resolvedOriginalPath;
         if (existingPath != null && await File(existingPath).exists()) {
           continue;
         }
@@ -1889,7 +2166,8 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
       try {
         final ByteData data = await rootBundle.load(assetPath);
         final Uint8List bytes = data.buffer.asUint8List();
-        final String storedPath = await LocalAlbumStore.persistBundledImageBytes(
+        final ManagedPhotoPaths stored =
+            await LocalAlbumStore.persistBundledPhotoBytes(
           bytes,
           albumId: firstAlbum.id,
           sourceName: assetPath,
@@ -1904,7 +2182,9 @@ class _AlbumPrototypeAppState extends State<AlbumPrototypeApp> {
           note: '内置示例图片',
           orientation: orientation,
           style: firstAlbum.style,
-          imagePath: storedPath,
+          imagePath: stored.originalPath,
+          originalPath: stored.originalPath,
+          thumbnailPath: stored.thumbnailPath,
         );
         if (existingIndex != -1) {
           nextPhotos[existingIndex] = bundledPhoto;
@@ -2236,25 +2516,112 @@ class _AndroidImportPhotoPickerPage extends StatefulWidget {
 
 class _AndroidImportPhotoPickerPageState
     extends State<_AndroidImportPhotoPickerPage> {
-  late final Future<List<AssetEntity>> _assetsFuture;
+  static const int _assetPageSize = 120;
   final ScrollController _gridScrollController = ScrollController();
   final Set<String> _selectedAssetIds = <String>{};
+  final Map<String, Future<Uint8List?>> _thumbnailFutures =
+      <String, Future<Uint8List?>>{};
+  final List<AssetEntity> _assets = <AssetEntity>[];
+  bool _isInitialLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreAssets = true;
+  int _totalAssetCount = 0;
+  int? _dragSelectionAnchorIndex;
 
   @override
   void initState() {
     super.initState();
-    _assetsFuture = _loadAssets();
+    _gridScrollController.addListener(_handleGridScroll);
+    unawaited(_loadInitialAssets());
   }
 
   @override
   void dispose() {
+    _gridScrollController.removeListener(_handleGridScroll);
     _gridScrollController.dispose();
     super.dispose();
   }
 
-  Future<List<AssetEntity>> _loadAssets() async {
+  Future<void> _loadInitialAssets() async {
     final int count = await widget.bucket.path.assetCountAsync;
-    return widget.bucket.path.getAssetListPaged(page: 0, size: count);
+    if (!mounted) {
+      return;
+    }
+    _totalAssetCount = count;
+    await _loadMoreAssets(reset: true);
+  }
+
+  void _handleGridScroll() {
+    if (!_gridScrollController.hasClients || _isLoadingMore || !_hasMoreAssets) {
+      return;
+    }
+    final double threshold =
+        _gridScrollController.position.maxScrollExtent - 480;
+    if (_gridScrollController.position.pixels >= threshold) {
+      unawaited(_loadMoreAssets());
+    }
+  }
+
+  Future<void> _loadMoreAssets({bool reset = false}) async {
+    if (_isLoadingMore) {
+      return;
+    }
+    if (!reset && !_hasMoreAssets) {
+      return;
+    }
+    setState(() {
+      _isLoadingMore = true;
+      if (reset) {
+        _isInitialLoading = true;
+      }
+    });
+    final int currentCount = reset ? 0 : _assets.length;
+    final int page = currentCount ~/ _assetPageSize;
+    final List<AssetEntity> pageAssets = await widget.bucket.path
+        .getAssetListPaged(page: page, size: _assetPageSize);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      if (reset) {
+        _assets
+          ..clear()
+          ..addAll(pageAssets);
+      } else {
+        _assets.addAll(pageAssets);
+      }
+      _hasMoreAssets = pageAssets.length == _assetPageSize &&
+          _assets.length < _totalAssetCount;
+      _isLoadingMore = false;
+      _isInitialLoading = false;
+    });
+  }
+
+  Future<List<AssetEntity>> _loadAllAssets() async {
+    if (_assets.length >= _totalAssetCount && _totalAssetCount > 0) {
+      return _assets;
+    }
+    final List<AssetEntity> allAssets =
+        await widget.bucket.path.getAssetListPaged(page: 0, size: _totalAssetCount);
+    if (!mounted) {
+      return allAssets;
+    }
+    setState(() {
+      _assets
+        ..clear()
+        ..addAll(allAssets);
+      _hasMoreAssets = false;
+      _isInitialLoading = false;
+      _isLoadingMore = false;
+    });
+    return allAssets;
+  }
+
+  Future<Uint8List?> _thumbnailFutureFor(AssetEntity asset) {
+    return _thumbnailFutures.putIfAbsent(
+      asset.id,
+      () => asset.thumbnailDataWithSize(const ThumbnailSize(300, 300)),
+    );
   }
 
   void _toggleAssetSelection(AssetEntity asset) {
@@ -2268,7 +2635,10 @@ class _AndroidImportPhotoPickerPageState
   }
 
   Future<void> _submitSelection() async {
-    final List<AssetEntity> assets = await _assetsFuture;
+    final List<AssetEntity> assets = _selectedAssetIds.length >= _assets.length &&
+            _assets.length < _totalAssetCount
+        ? await _loadAllAssets()
+        : _assets;
     final List<AssetEntity> selected = assets.where((AssetEntity asset) {
       return _selectedAssetIds.contains(asset.id);
     }).toList();
@@ -2278,7 +2648,12 @@ class _AndroidImportPhotoPickerPageState
     Navigator.of(context).pop(selected);
   }
 
-  void _toggleSelectAll(List<AssetEntity> assets) {
+  Future<void> _toggleSelectAll() async {
+    final List<AssetEntity> assets =
+        _assets.length < _totalAssetCount ? await _loadAllAssets() : _assets;
+    if (!mounted) {
+      return;
+    }
     setState(() {
       if (_selectedAssetIds.length == assets.length) {
         _selectedAssetIds.clear();
@@ -2291,7 +2666,7 @@ class _AndroidImportPhotoPickerPageState
   }
 
   Future<void> _openAssetPreview(AssetEntity asset) async {
-    final List<AssetEntity> assets = await _assetsFuture;
+    final List<AssetEntity> assets = _assets;
     final int initialIndex = assets.indexWhere((AssetEntity item) {
       return item.id == asset.id;
     });
@@ -2347,12 +2722,18 @@ class _AndroidImportPhotoPickerPageState
     if (index < 0 || index >= assets.length) {
       return;
     }
-    final String assetId = assets[index].id;
-    if (_selectedAssetIds.contains(assetId)) {
+    _dragSelectionAnchorIndex ??= index;
+    final int anchorIndex = _dragSelectionAnchorIndex ?? index;
+    final int start = math.min(anchorIndex, index);
+    final int end = math.max(anchorIndex, index);
+    final Set<String> rangeIds = <String>{
+      for (int i = start; i <= end; i += 1) assets[i].id,
+    };
+    if (rangeIds.every(_selectedAssetIds.contains)) {
       return;
     }
     setState(() {
-      _selectedAssetIds.add(assetId);
+      _selectedAssetIds.addAll(rangeIds);
     });
   }
 
@@ -2365,23 +2746,13 @@ class _AndroidImportPhotoPickerPageState
       appBar: AppBar(
         title: Text(widget.bucket.path.name),
         actions: <Widget>[
-          FutureBuilder<List<AssetEntity>>(
-            future: _assetsFuture,
-            builder: (
-              BuildContext context,
-              AsyncSnapshot<List<AssetEntity>> snapshot,
-            ) {
-              final List<AssetEntity> assets =
-                  snapshot.data ?? const <AssetEntity>[];
-              return TextButton(
-                onPressed: assets.isEmpty ? null : () => _toggleSelectAll(assets),
-                child: Text(
-                  assets.isNotEmpty && _selectedAssetIds.length == assets.length
-                      ? '取消全选'
-                      : '全选',
-                ),
-              );
-            },
+          TextButton(
+            onPressed: _assets.isEmpty ? null : _toggleSelectAll,
+            child: Text(
+              _totalAssetCount > 0 && _selectedAssetIds.length == _totalAssetCount
+                  ? '取消全选'
+                  : '全选',
+            ),
           ),
           TextButton(
             onPressed: _selectedAssetIds.isEmpty
@@ -2391,145 +2762,158 @@ class _AndroidImportPhotoPickerPageState
           ),
         ],
       ),
-      body: FutureBuilder<List<AssetEntity>>(
-        future: _assetsFuture,
-        builder: (
-          BuildContext context,
-          AsyncSnapshot<List<AssetEntity>> snapshot,
-        ) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final List<AssetEntity> assets =
-              snapshot.data ?? const <AssetEntity>[];
-          if (assets.isEmpty) {
-            return Center(
+      body: _isInitialLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _assets.isEmpty
+          ? Center(
               child: Text(
                 '这个相册里没有可导入的图片。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: tokens?.muted ?? theme.colorScheme.onSurface,
                 ),
               ),
-            );
-          }
-          return LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              return GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onPanStart: (DragStartDetails details) {
-                  _selectAssetAtDragPosition(
-                    details.localPosition,
-                    assets,
-                    constraints,
-                  );
-                },
-                onPanUpdate: (DragUpdateDetails details) {
-                  _selectAssetAtDragPosition(
-                    details.localPosition,
-                    assets,
-                    constraints,
-                  );
-                },
-                child: GridView.builder(
-                  controller: _gridScrollController,
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5,
-                    mainAxisSpacing: 4,
-                    crossAxisSpacing: 4,
-                  ),
-                  itemCount: assets.length,
-                  itemBuilder: (BuildContext context, int index) {
-                    final AssetEntity asset = assets[index];
-                    final bool selected = _selectedAssetIds.contains(asset.id);
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: <Widget>[
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: () => _openAssetPreview(asset),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: _AssetEntityThumbnail(
-                                asset: asset,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (selected)
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: const Color(0xFFFF3B30),
-                                    width: 3,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        Positioned(
-                          top: 6,
-                          right: 6,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: () => _toggleAssetSelection(asset),
-                              child: Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: selected
-                                      ? const Color(0xFFFF3B30)
-                                      : Colors.black.withValues(alpha: 0.34),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.92),
-                                  ),
-                                ),
-                                child: Icon(
-                                  selected
-                                      ? Icons.check_rounded
-                                      : Icons.add_rounded,
-                                  size: 15,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+            )
+          : LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final List<AssetEntity> assets = _assets;
+                return GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onLongPressStart: (LongPressStartDetails details) {
+                    _dragSelectionAnchorIndex = null;
+                    _selectAssetAtDragPosition(
+                      details.localPosition,
+                      assets,
+                      constraints,
                     );
                   },
-                ),
-              );
-            },
-          );
-        },
-      ),
+                  onLongPressMoveUpdate: (LongPressMoveUpdateDetails details) {
+                    _selectAssetAtDragPosition(
+                      details.localPosition,
+                      assets,
+                      constraints,
+                    );
+                  },
+                  onLongPressEnd: (LongPressEndDetails details) {
+                    _dragSelectionAnchorIndex = null;
+                  },
+                  child: GridView.builder(
+                    controller: _gridScrollController,
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 5,
+                      mainAxisSpacing: 4,
+                      crossAxisSpacing: 4,
+                    ),
+                    itemCount: assets.length + (_hasMoreAssets ? 1 : 0),
+                    itemBuilder: (BuildContext context, int index) {
+                      if (index >= assets.length) {
+                        return Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      }
+                      final AssetEntity asset = assets[index];
+                      final bool selected = _selectedAssetIds.contains(asset.id);
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () => _openAssetPreview(asset),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: _AssetEntityThumbnail(
+                                  key: ValueKey<String>(asset.id),
+                                  asset: asset,
+                                  fit: BoxFit.cover,
+                                  thumbnailFuture: _thumbnailFutureFor(asset),
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (selected)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: const Color(0xFFFF3B30),
+                                      width: 3,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: () => _toggleAssetSelection(asset),
+                                child: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? const Color(0xFFFF3B30)
+                                        : Colors.black.withValues(alpha: 0.34),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.92),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    selected
+                                        ? Icons.check_rounded
+                                        : Icons.add_rounded,
+                                    size: 15,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
     );
   }
 }
 
 class _AssetEntityThumbnail extends StatelessWidget {
   const _AssetEntityThumbnail({
+    super.key,
     required this.asset,
     this.fit = BoxFit.cover,
+    this.thumbnailFuture,
   });
 
   final AssetEntity asset;
   final BoxFit fit;
+  final Future<Uint8List?>? thumbnailFuture;
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Uint8List?>(
-      future: asset.thumbnailDataWithSize(const ThumbnailSize(300, 300)),
+      future: thumbnailFuture ??
+          asset.thumbnailDataWithSize(const ThumbnailSize(300, 300)),
       builder: (
         BuildContext context,
         AsyncSnapshot<Uint8List?> snapshot,
@@ -4964,13 +5348,13 @@ class _ShelfScene extends StatelessWidget {
       source: ImageSource.gallery,
     );
     if (image != null) {
-      final String storedPath = await LocalAlbumStore.persistPickedImage(
+      final ManagedPhotoPaths stored = await LocalAlbumStore.persistPickedPhoto(
         image,
         albumId: albumId,
       );
       final DateTime coverDate = await resolvePhotoDate(image.path);
       final PhotoOrientation orientation = await detectPhotoOrientation(
-        storedPath,
+        stored.originalPath,
       );
       coverPhoto = PhotoData(
         id: 'photo-${DateTime.now().microsecondsSinceEpoch}',
@@ -4979,7 +5363,9 @@ class _ShelfScene extends StatelessWidget {
         note: '创建相册时选择的封面图片。',
         orientation: orientation,
         style: result.style,
-        imagePath: storedPath,
+        imagePath: stored.originalPath,
+        originalPath: stored.originalPath,
+        thumbnailPath: stored.thumbnailPath,
       );
     }
     onAlbumCreated(
@@ -5943,6 +6329,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   late final ScrollController _mobilePhotoSectionScrollController;
   bool _isSelectionMode = false;
   bool _isImportingPhotos = false;
+  int _importProgressCurrent = 0;
+  int _importProgressTotal = 0;
+  PhotoPersistStage _importProgressStage = PhotoPersistStage.importing;
   bool _isEditingAlbumText = false;
   bool _isThumbnailMode = false;
   String _photoSearchQuery = '';
@@ -5953,6 +6342,19 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   bool _showTimelineOverlay = false;
   bool _isDraggingTimeline = false;
   int _timelineSectionIndex = 0;
+
+  String get _importActionLabel {
+    if (!_isImportingPhotos) {
+      return '添加照片';
+    }
+    if (_importProgressTotal <= 0) {
+      return '导入中...';
+    }
+    final String phaseLabel = _importProgressStage == PhotoPersistStage.generatingThumbnail
+        ? '正在生成缩略图'
+        : '正在导入';
+    return '$phaseLabel ${_importProgressCurrent.clamp(0, _importProgressTotal)}/$_importProgressTotal';
+  }
 
   List<PhotoData> get _filteredPhotos {
     return _album.photos.where((PhotoData photo) {
@@ -6077,6 +6479,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       selectedPhotoIds: _selectedPhotoIds,
                       onToggleSelection: _togglePhotoSelection,
                       onStartSelection: _startSelection,
+                      onMergeSelection: _mergePhotoSelection,
                       scrollable: false,
                     )
                   : MasonryPhotoGrid(
@@ -6448,7 +6851,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
               TextButton.icon(
                 onPressed: _isImportingPhotos ? null : _importPhotosFromFiles,
                 icon: const Icon(Icons.add_photo_alternate_outlined),
-                label: Text(_isImportingPhotos ? '导入中...' : '添加照片'),
+                label: Text(_importActionLabel),
               ),
               TextButton.icon(
                 onPressed: _toggleThumbnailMode,
@@ -6501,7 +6904,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                     PopupMenuItem<String>(
                       value: 'add-photos',
                       enabled: !_isImportingPhotos,
-                      child: Text(_isImportingPhotos ? '导入中...' : '添加照片'),
+                      child: Text(_importActionLabel),
                     ),
                     PopupMenuItem<String>(
                       value: 'toggle-thumbnail',
@@ -6520,11 +6923,11 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
           ? null
           : _isSelectionMode
           ? null
-          : FloatingActionButton(
+          : FloatingActionButton.extended(
               backgroundColor: const Color(0xFF9A6F47),
               foregroundColor: Colors.white,
               onPressed: _isImportingPhotos ? null : _importPhotosFromFiles,
-              child: _isImportingPhotos
+              icon: _isImportingPhotos
                   ? const SizedBox(
                       width: 22,
                       height: 22,
@@ -6534,6 +6937,7 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                       ),
                     )
                   : const Icon(Icons.add_rounded),
+              label: Text(_importActionLabel),
             ),
       body: SafeArea(
         child: isDesktop
@@ -6710,6 +7114,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   Future<void> _importPhotosFromFiles() async {
     setState(() {
       _isImportingPhotos = true;
+      _importProgressCurrent = 0;
+      _importProgressTotal = 0;
+      _importProgressStage = PhotoPersistStage.importing;
     });
     final List<PhotoData> importedPhotos = <PhotoData>[];
     try {
@@ -6722,19 +7129,40 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
           lockParentWindow: true,
         );
         if (result != null && result.files.isNotEmpty) {
-          for (final PlatformFile file in result.files) {
+          if (mounted) {
+            setState(() {
+              _importProgressTotal = result.files.length;
+            });
+          }
+          for (int index = 0; index < result.files.length; index += 1) {
+            final PlatformFile file = result.files[index];
+            if (mounted) {
+              setState(() {
+                _importProgressCurrent = index + 1;
+                _importProgressStage = PhotoPersistStage.importing;
+              });
+            }
             final String? sourcePath = file.path;
             if (sourcePath == null || sourcePath.isEmpty) {
               continue;
             }
             final XFile image = XFile(sourcePath);
-            final String storedPath = await LocalAlbumStore.persistPickedImage(
+            final ManagedPhotoPaths stored =
+                await LocalAlbumStore.persistPickedPhoto(
               image,
               albumId: _album.id,
+              onStageChanged: (PhotoPersistStage stage) {
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  _importProgressStage = stage;
+                });
+              },
             );
             final DateTime detectedDate = await resolvePhotoDate(sourcePath);
             final PhotoOrientation orientation = await detectPhotoOrientation(
-              storedPath,
+              stored.originalPath,
             );
             importedPhotos.add(
               PhotoData(
@@ -6744,7 +7172,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
                 note: '',
                 orientation: orientation,
                 style: _album.style,
-                imagePath: storedPath,
+                imagePath: stored.originalPath,
+                originalPath: stored.originalPath,
+                thumbnailPath: stored.thumbnailPath,
               ),
             );
           }
@@ -6752,13 +7182,16 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
       }
     } catch (_) {
       for (final PhotoData photo in importedPhotos) {
-        await LocalAlbumStore.deleteManagedImage(photo.imagePath);
+        await LocalAlbumStore.deleteManagedPhoto(photo);
       }
       if (!mounted) {
         return;
       }
       setState(() {
         _isImportingPhotos = false;
+        _importProgressCurrent = 0;
+        _importProgressTotal = 0;
+        _importProgressStage = PhotoPersistStage.importing;
       });
       showPrototypeMessage(context, '导入失败，请重试。');
       return;
@@ -6770,6 +7203,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     if (importedPhotos.isEmpty) {
       setState(() {
         _isImportingPhotos = false;
+        _importProgressCurrent = 0;
+        _importProgressTotal = 0;
+        _importProgressStage = PhotoPersistStage.importing;
       });
       showPrototypeMessage(context, '未找到可导入的图片。');
       return;
@@ -6782,6 +7218,9 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     setState(() {
       _album = updatedAlbum;
       _isImportingPhotos = false;
+      _importProgressCurrent = 0;
+      _importProgressTotal = 0;
+      _importProgressStage = PhotoPersistStage.importing;
     });
     widget.onAlbumChanged(updatedAlbum);
     showPrototypeMessage(context, '已导入 ${importedPhotos.length} 张照片');
@@ -6816,47 +7255,78 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     if (!mounted || selectedAssets == null || selectedAssets.isEmpty) {
       return const <PhotoData>[];
     }
+    setState(() {
+      _importProgressCurrent = 0;
+      _importProgressTotal = selectedAssets.length;
+    });
     final List<PhotoData> importedPhotos = <PhotoData>[];
-    for (final AssetEntity asset in selectedAssets) {
-      final File? sourceFile = await asset.originFile;
-      String storedPath;
-      if (sourceFile != null && await sourceFile.exists()) {
-        storedPath = await LocalAlbumStore.persistPickedImage(
-          XFile(sourceFile.path),
-          albumId: _album.id,
-        );
-      } else {
-        final Uint8List? bytes = await asset.originBytes;
-        if (bytes == null || bytes.isEmpty) {
-          continue;
-        }
-        final String sourceName = asset.title ?? await asset.titleAsync;
-        storedPath = await LocalAlbumStore.persistImageBytes(
-          bytes,
-          albumId: _album.id,
-          sourceName: sourceName,
-        );
+    for (int index = 0; index < selectedAssets.length; index += 1) {
+      final AssetEntity asset = selectedAssets[index];
+      if (mounted) {
+        setState(() {
+          _importProgressCurrent = index + 1;
+          _importProgressStage = PhotoPersistStage.importing;
+        });
       }
-      final PhotoOrientation orientation =
-          asset.width >= asset.height
-              ? PhotoOrientation.landscape
-              : PhotoOrientation.portrait;
-      final String sourceName = asset.title ?? await asset.titleAsync;
-      importedPhotos.add(
-        PhotoData(
-          id: 'local-${DateTime.now().microsecondsSinceEpoch}-${importedPhotos.length}',
-          title: derivePhotoTitleFromPath(sourceName),
-          date: formatAlbumDate(
-            asset.createDateSecond != null && asset.createDateSecond! > 0
-                ? asset.createDateTime
-                : asset.modifiedDateTime,
+      try {
+        final File? sourceFile = await asset.originFile;
+        ManagedPhotoPaths stored;
+        if (sourceFile != null && await sourceFile.exists()) {
+          stored = await LocalAlbumStore.persistPickedPhoto(
+            XFile(sourceFile.path),
+            albumId: _album.id,
+            onStageChanged: (PhotoPersistStage stage) {
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _importProgressStage = stage;
+              });
+            },
+          );
+        } else {
+          final Uint8List? bytes = await asset.originBytes;
+          if (bytes == null || bytes.isEmpty) {
+            continue;
+          }
+          final String sourceName = asset.title ?? await asset.titleAsync;
+          stored = await LocalAlbumStore.persistPhotoBytes(
+            bytes,
+            albumId: _album.id,
+            sourceName: sourceName,
+            onStageChanged: (PhotoPersistStage stage) {
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                _importProgressStage = stage;
+              });
+            },
+          );
+        }
+        final PhotoOrientation orientation =
+            asset.width >= asset.height
+                ? PhotoOrientation.landscape
+                : PhotoOrientation.portrait;
+        final String sourceName = asset.title ?? await asset.titleAsync;
+        importedPhotos.add(
+          PhotoData(
+            id: 'local-${DateTime.now().microsecondsSinceEpoch}-${importedPhotos.length}',
+            title: derivePhotoTitleFromPath(sourceName),
+            date: formatAlbumDate(
+              asset.createDateSecond != null && asset.createDateSecond! > 0
+                  ? asset.createDateTime
+                  : asset.modifiedDateTime,
+            ),
+            note: '',
+            orientation: orientation,
+            style: _album.style,
+            imagePath: stored.originalPath,
+            originalPath: stored.originalPath,
+            thumbnailPath: stored.thumbnailPath,
           ),
-          note: '',
-          orientation: orientation,
-          style: _album.style,
-          imagePath: storedPath,
-        ),
-      );
+        );
+      } finally {}
     }
     return importedPhotos;
   }
@@ -7068,9 +7538,22 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
   void _startSelection(PhotoData photo) {
     setState(() {
       _isSelectionMode = true;
-      _selectedPhotoIds
-        ..clear()
-        ..add(photo.id);
+      if (!_selectedPhotoIds.contains(photo.id)) {
+        if (_selectedPhotoIds.isEmpty) {
+          _selectedPhotoIds.clear();
+        }
+        _selectedPhotoIds.add(photo.id);
+      }
+    });
+  }
+
+  void _mergePhotoSelection(Set<String> photoIds) {
+    if (photoIds.isEmpty) {
+      return;
+    }
+    setState(() {
+      _isSelectionMode = true;
+      _selectedPhotoIds.addAll(photoIds);
     });
   }
 
@@ -7300,15 +7783,20 @@ class _AlbumDetailPageState extends State<AlbumDetailPage> {
     final List<PhotoData> transferPhotos = <PhotoData>[];
     for (final PhotoData photo in selectedPhotos) {
       if (copyOnly) {
-        final String? duplicatedImagePath = await LocalAlbumStore
-            .duplicateManagedImage(
-              photo.imagePath,
-              albumId: targetAlbum.id,
-            );
+        final ManagedPhotoPaths? duplicatedPaths =
+            await LocalAlbumStore.duplicateManagedPhoto(
+          photo,
+          albumId: targetAlbum.id,
+        );
         transferPhotos.add(
           photo.copyWith(
             id: 'copy-${DateTime.now().microsecondsSinceEpoch}-${transferPhotos.length}',
-            imagePath: duplicatedImagePath ?? photo.imagePath,
+            imagePath:
+                duplicatedPaths?.originalPath ?? photo.resolvedOriginalPath,
+            originalPath:
+                duplicatedPaths?.originalPath ?? photo.resolvedOriginalPath,
+            thumbnailPath:
+                duplicatedPaths?.thumbnailPath ?? photo.thumbnailPath,
           ),
         );
       } else {
@@ -7636,6 +8124,7 @@ class ThumbnailPhotoGrid extends StatelessWidget {
     required this.selectedPhotoIds,
     required this.onToggleSelection,
     required this.onStartSelection,
+    required this.onMergeSelection,
     this.photos,
     this.scrollable = true,
     super.key,
@@ -7648,6 +8137,7 @@ class ThumbnailPhotoGrid extends StatelessWidget {
   final Set<String> selectedPhotoIds;
   final ValueChanged<PhotoData> onToggleSelection;
   final ValueChanged<PhotoData> onStartSelection;
+  final ValueChanged<Set<String>> onMergeSelection;
   final List<PhotoData>? photos;
   final bool scrollable;
 
@@ -7660,42 +8150,91 @@ class ThumbnailPhotoGrid extends StatelessWidget {
         const double gap = 3;
         final double itemSize =
             (constraints.maxWidth - ((columns - 1) * gap)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: displayPhotos.map((PhotoData photo) {
-            return SizedBox(
-              width: itemSize,
-              height: itemSize,
-              child: _ThumbnailPhotoTile(
-                photo: photo,
-                selected: selectedPhotoIds.contains(photo.id),
-                selectionMode: selectionMode,
-                onTap: () {
-                  if (selectionMode) {
-                    onToggleSelection(photo);
-                    return;
-                  }
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (BuildContext context) {
-                        return PhotoDetailPage(
-                          album: album,
-                          photos: album.photos,
-                          initialIndex: album.photos.indexWhere(
-                            (PhotoData item) => item.id == photo.id,
-                          ),
-                          onAlbumChanged: onAlbumChanged,
-                          onPhotosTrashed: onPhotosTrashed,
-                        );
-                      },
-                    ),
-                  );
-                },
-                onLongPress: () => onStartSelection(photo),
-              ),
-            );
-          }).toList(),
+        int? dragAnchorIndex;
+
+        int? resolveIndex(Offset localPosition) {
+          final int column = (localPosition.dx / (itemSize + gap)).floor();
+          final int row = (localPosition.dy / (itemSize + gap)).floor();
+          if (column < 0 || column >= columns || row < 0) {
+            return null;
+          }
+          final double cellX = localPosition.dx - (column * (itemSize + gap));
+          final double cellY = localPosition.dy - (row * (itemSize + gap));
+          if (cellX < 0 || cellX > itemSize || cellY < 0 || cellY > itemSize) {
+            return null;
+          }
+          final int index = (row * columns) + column;
+          if (index < 0 || index >= displayPhotos.length) {
+            return null;
+          }
+          return index;
+        }
+
+        void handleRangeSelection(Offset localPosition) {
+          final int? currentIndex = resolveIndex(localPosition);
+          if (currentIndex == null) {
+            return;
+          }
+          dragAnchorIndex ??= currentIndex;
+          final int start = math.min(dragAnchorIndex!, currentIndex);
+          final int end = math.max(dragAnchorIndex!, currentIndex);
+          onMergeSelection(<String>{
+            for (int i = start; i <= end; i += 1) displayPhotos[i].id,
+          });
+        }
+
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onLongPressStart: (LongPressStartDetails details) {
+            dragAnchorIndex = null;
+            handleRangeSelection(details.localPosition);
+            final int? startIndex = resolveIndex(details.localPosition);
+            if (startIndex != null) {
+              onStartSelection(displayPhotos[startIndex]);
+            }
+          },
+          onLongPressMoveUpdate: (LongPressMoveUpdateDetails details) {
+            handleRangeSelection(details.localPosition);
+          },
+          onLongPressEnd: (LongPressEndDetails details) {
+            dragAnchorIndex = null;
+          },
+          child: Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: displayPhotos.map((PhotoData photo) {
+              return SizedBox(
+                width: itemSize,
+                height: itemSize,
+                child: _ThumbnailPhotoTile(
+                  photo: photo,
+                  selected: selectedPhotoIds.contains(photo.id),
+                  selectionMode: selectionMode,
+                  onTap: () {
+                    if (selectionMode) {
+                      onToggleSelection(photo);
+                      return;
+                    }
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (BuildContext context) {
+                          return PhotoDetailPage(
+                            album: album,
+                            photos: album.photos,
+                            initialIndex: album.photos.indexWhere(
+                              (PhotoData item) => item.id == photo.id,
+                            ),
+                            onAlbumChanged: onAlbumChanged,
+                            onPhotosTrashed: onPhotosTrashed,
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+              );
+            }).toList(),
+          ),
         );
       },
     );
@@ -8057,12 +8596,12 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
       _isSaving = true;
     });
 
-    final String storedPath = await LocalAlbumStore.persistPickedImage(
+    final ManagedPhotoPaths stored = await LocalAlbumStore.persistPickedPhoto(
       image,
       albumId: widget.album.id,
     );
     final PhotoOrientation orientation = await detectPhotoOrientation(
-      storedPath,
+      stored.originalPath,
     );
     final PhotoData photo = PhotoData(
       id: 'local-${DateTime.now().microsecondsSinceEpoch}',
@@ -8071,7 +8610,9 @@ class _AddPhotoPageState extends State<AddPhotoPage> {
       note: note,
       orientation: orientation,
       style: widget.album.style,
-      imagePath: storedPath,
+      imagePath: stored.originalPath,
+      originalPath: stored.originalPath,
+      thumbnailPath: stored.thumbnailPath,
     );
     final AlbumData updatedAlbum = widget.album.withInsertedPhoto(photo);
 
@@ -8774,17 +9315,19 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     if (!mounted || image == null) {
       return;
     }
-    final String storedPath = await LocalAlbumStore.persistPickedImage(
+    final ManagedPhotoPaths stored = await LocalAlbumStore.persistPickedPhoto(
       image,
       albumId: widget.album.id,
     );
     final PhotoOrientation orientation = await detectPhotoOrientation(
-      storedPath,
+      stored.originalPath,
     );
     final DateTime detectedDate = await resolvePhotoDate(image.path);
-    final String previousImagePath = photo.imagePath ?? '';
+    final PhotoData previousPhoto = photo;
     final PhotoData updatedPhoto = photo.copyWith(
-      imagePath: storedPath,
+      imagePath: stored.originalPath,
+      originalPath: stored.originalPath,
+      thumbnailPath: stored.thumbnailPath,
       orientation: orientation,
       date: formatAlbumDate(detectedDate),
       tags: photo.tags,
@@ -8799,9 +9342,7 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
       _panOffset = Offset.zero;
     });
     widget.onAlbumChanged(widget.album.copyWith(photos: updatedPhotos));
-    if (previousImagePath.isNotEmpty) {
-      unawaited(LocalAlbumStore.deleteManagedImage(previousImagePath));
-    }
+    unawaited(LocalAlbumStore.deleteManagedPhoto(previousPhoto));
     if (!mounted) {
       return;
     }
@@ -9895,6 +10436,7 @@ class _DetailImageFrame extends StatelessWidget {
                             child: PhotoVisual(
                               photo: photo,
                               fit: baseFit,
+                              useThumbnail: false,
                             ),
                           ),
                         ),
@@ -11113,14 +11655,12 @@ class _ThumbnailPhotoTile extends StatelessWidget {
   const _ThumbnailPhotoTile({
     required this.photo,
     required this.onTap,
-    required this.onLongPress,
     required this.selectionMode,
     required this.selected,
   });
 
   final PhotoData photo;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
   final bool selectionMode;
   final bool selected;
 
@@ -11128,7 +11668,6 @@ class _ThumbnailPhotoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      onLongPress: onLongPress,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(5),
         child: Stack(
@@ -13021,6 +13560,7 @@ class PhotoVisual extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.alignment = Alignment.center,
     this.scale = 1,
+    this.useThumbnail = true,
     super.key,
   });
 
@@ -13028,11 +13568,14 @@ class PhotoVisual extends StatelessWidget {
   final BoxFit fit;
   final Alignment alignment;
   final double scale;
+  final bool useThumbnail;
 
   @override
   Widget build(BuildContext context) {
     final Widget child;
-    final String? imagePath = photo.imagePath;
+    final String? imagePath = useThumbnail
+        ? photo.thumbnailPath
+        : photo.resolvedOriginalPath;
     if (imagePath != null) {
       final File file = File(imagePath);
       if (file.existsSync()) {
@@ -13047,6 +13590,25 @@ class PhotoVisual extends StatelessWidget {
           alignment: alignment,
           child: child,
         );
+      }
+    }
+    if (!useThumbnail) {
+      final String? fallbackPath = photo.resolvedOriginalPath;
+      if (fallbackPath != null) {
+        final File file = File(fallbackPath);
+        if (file.existsSync()) {
+          child = Image.file(
+            file,
+            fit: fit,
+            alignment: alignment,
+            errorBuilder: (_, _, _) => ScenicArtwork(style: photo.style),
+          );
+          return Transform.scale(
+            scale: scale,
+            alignment: alignment,
+            child: child,
+          );
+        }
       }
     }
     child = ScenicArtwork(style: photo.style);
@@ -13851,6 +14413,8 @@ class PhotoData {
     required this.orientation,
     required this.style,
     this.imagePath,
+    this.originalPath,
+    this.thumbnailPath,
     this.isFavorite = false,
   });
 
@@ -13862,7 +14426,11 @@ class PhotoData {
   final PhotoOrientation orientation;
   final PhotoStyle style;
   final String? imagePath;
+  final String? originalPath;
+  final String? thumbnailPath;
   final bool isFavorite;
+
+  String? get resolvedOriginalPath => originalPath ?? imagePath;
 
   PhotoData copyWith({
     String? id,
@@ -13872,7 +14440,9 @@ class PhotoData {
     List<String>? tags,
     PhotoOrientation? orientation,
     PhotoStyle? style,
-    String? imagePath,
+    Object? imagePath = _fieldUnset,
+    Object? originalPath = _fieldUnset,
+    Object? thumbnailPath = _fieldUnset,
     bool? isFavorite,
   }) {
     return PhotoData(
@@ -13883,7 +14453,15 @@ class PhotoData {
       tags: tags ?? this.tags,
       orientation: orientation ?? this.orientation,
       style: style ?? this.style,
-      imagePath: imagePath ?? this.imagePath,
+      imagePath: identical(imagePath, _fieldUnset)
+          ? this.imagePath
+          : imagePath as String?,
+      originalPath: identical(originalPath, _fieldUnset)
+          ? this.originalPath
+          : originalPath as String?,
+      thumbnailPath: identical(thumbnailPath, _fieldUnset)
+          ? this.thumbnailPath
+          : thumbnailPath as String?,
       isFavorite: isFavorite ?? this.isFavorite,
     );
   }
@@ -13897,12 +14475,16 @@ class PhotoData {
       'tags': tags,
       'orientation': orientation.name,
       'style': style.name,
-      'imagePath': imagePath,
+      'imagePath': resolvedOriginalPath,
+      'originalPath': resolvedOriginalPath,
+      'thumbnailPath': thumbnailPath,
       'isFavorite': isFavorite,
     };
   }
 
   factory PhotoData.fromJson(Map<String, dynamic> json) {
+    final String? originalPath =
+        json['originalPath'] as String? ?? json['imagePath'] as String?;
     return PhotoData(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -13916,7 +14498,9 @@ class PhotoData {
         json['orientation'] as String,
       ),
       style: PhotoStyle.values.byName(json['style'] as String),
-      imagePath: json['imagePath'] as String?,
+      imagePath: originalPath,
+      originalPath: originalPath,
+      thumbnailPath: json['thumbnailPath'] as String?,
       isFavorite: json['isFavorite'] as bool? ?? false,
     );
   }
